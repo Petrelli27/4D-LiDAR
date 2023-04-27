@@ -226,11 +226,11 @@ R = 500 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([1.,1.,1.]) # inertial, unchanging angular velocity of debris
+omega_L = np.array([0.5,0.5,0.5]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
-nframes = 2000
+nframes = 100
 dt = 0.05
 
 # simulate debris velocity (linear and angular) in {L} frame from dynamics
@@ -242,8 +242,8 @@ debris_vel = np.vstack([vx,vy,vz]).T
 # LiDAR point cloud generation initializations
 h_resolution = 40  # Number of rays horizontally
 v_resolution = 40  # Number of rays vertically
-h_range = 120  # Vertical lidar angle range in degrees
-v_range = 60  # Horizontal lidar angle range in degrees
+# h_range = 120  # Vertical lidar angle range in degrees
+# v_range = 60  # Horizontal lidar angle range in degrees
 
 
 # generate debris mesh (we only want to do this once to improve compute efficiency)
@@ -259,6 +259,10 @@ VBs = []
 Rot_L_to_B = []
 for i in range(nframes):
     print(i)
+
+    h_range = 120 - 120/nframes*i + 5  # Vertical lidar angle range in degrees
+    v_range = 30 - 30/nframes*i + 5 # Horizontal lidar angle range in degrees
+
     debris = mesh.Mesh.from_file(debris_file)  # Grab satellite mesh
     # solve for rotation matrix  B^R_L (R*L => B)
     Rot_L_to_B.append(getR(x[i],y[i],z[i]))
@@ -305,6 +309,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim2000_fixed', 'wb') as sim_data:
+with open('sim100_variable_fov.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 
