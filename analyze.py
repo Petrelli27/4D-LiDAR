@@ -296,7 +296,7 @@ D_0 = 2  # Initial Width of box - y
 H_0 = 2  # Initial Height of box - z
 p_0 = [10., 10., 10.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
 v_0 = [1., 1., 1.]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [2.,0.,3.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
+omega_0 = [2.,2.,2.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
 # For the initializations, imagine a bounding box bottom right = p1, bottom left = p2, TP = p3, TR = p4, p5, p6, p7, p8 are
 # the same but in the back, centered at p0
 p1_0 = p_0 + np.array([L_0/2, -D_0/2, -H_0/2])
@@ -321,7 +321,7 @@ Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz,
 # Measurement noise covariance matrix
 pxz = 500
 py = 500
-om = 0.75
+om = 0.7
 vn = 0.01
 pxyz = 0.05
 pyy = 0.01
@@ -361,8 +361,10 @@ P_s = []
 # ax.set_ylabel('y')
 # ax.set_zlabel('z')
 
+n_moving_average = 50
 omega_kabsch_b = np.zeros((nframes, 3))
 omega_lls_b = np.zeros((nframes, 3))
+omega_kabsch_b_box = np.zeros((n_moving_average,3))
 
 # convert points and LOS velocities to {L}
 for i in range(nframes):
@@ -511,7 +513,14 @@ for i in range(nframes):
     # Rot_los = Rot_los.T # why did we want a transpose here? should remove this line
     angle_rot_los = np.arctan2(Rot_los[1,0],Rot_los[0,0])
     omega_los_B =  np.array([0,0,angle_rot_los / dt])
-    omega_los_L = Rot_B_to_L[i]@omega_los_B
+
+    # using moving average to smooth out omega_los_B
+    omega_kabsch_b_box[i%n_moving_average] = omega_los_B
+    if i < n_moving_average:
+        omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
+    else:
+        omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+    omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
     # if angle_rot_los/dt > 10: print(i, angle_rot_los/dt)
 
     # angular velocity of B to L
@@ -525,10 +534,10 @@ for i in range(nframes):
         axis_B_to_B = Rot_B_to_L[i] @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
         omega_L_to_B = (angle_B_to_B * axis_B_to_B)/dt
         # print(omega_L_to_B, angle_B_to_B)
-    z_omega_k = z_omega_k + omega_L_to_B # ignores kabsch
-    # z_omega_k = z_omega_k + omega_los_L + omega_L_to_B
+    # z_omega_k = z_omega_k + omega_L_to_B # ignores kabsch
+    z_omega_k = z_omega_k + omega_los_L + omega_L_to_B
     omega_lls_b[i,:] = z_omega_k_B
-    omega_kabsch_b[i,:] = omega_los_B
+    omega_kabsch_b[i,:] = omega_los_B_averaged
     # z_omega_k = [1., 1., 1.]
     z_omegas.append(z_omega_k)
 
@@ -624,6 +633,7 @@ ax.set_ylabel('y')
 ax.set_zlabel('z')
 ax.scatter(z_p_s[:,0], z_p_s[:,1], z_p_s[:,2], color='r', s=1)
 ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='b')
+ax.set_aspect('equal')
 
 
 m1 = len(x_s)
