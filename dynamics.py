@@ -88,9 +88,11 @@ def propagate(dt, nframes, r0, rdot0, omeg):
     ax.set_ylabel('y (m)')
     ax.set_zlabel('z (m)')
     ax.plot3D(xs, ys, zs, 'gray')
+    print(ds)
     plt.show()
 
-    return xs, ys, zs, vxs, vys, vzs, d, v
+
+    return xs, ys, zs, vxs, vys, vzs, ds, v
 
 if __name__ == '__main__':
 

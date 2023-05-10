@@ -232,18 +232,20 @@ omega_L = np.array([0.5,0.5,0.5]) # inertial, unchanging angular velocity of deb
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
-nframes = 100
-dt = 0.05
+nframes = 10
+dt = 100
 
 # simulate debris velocity (linear and angular) in {L} frame from dynamics
 x, y, z, vx, vy, vz, d, v = dynamics.propagate(dt, nframes, r0, rdot0, omeg)
 debris_pos = np.vstack([x,y,z]).T
 debris_vel = np.vstack([vx,vy,vz]).T
-
+print(d)
 # specify Lidar resolution and range
 # LiDAR point cloud generation initializations
+ang_res = 0.025  # angular resolution of Aeries 2 LiDAR
 h_resolution = 40  # Number of rays horizontally
 v_resolution = 40  # Number of rays vertically
+res_box = 5.5
 # h_range = 120  # Vertical lidar angle range in degrees
 # v_range = 60  # Horizontal lidar angle range in degrees
 
@@ -260,11 +262,16 @@ PBs = []
 VBs = []
 Rot_L_to_B = []
 for i in range(nframes):
-    print(i)
+    print("Current iteration: " + str(i))
 
-    h_range = 120 - 120/nframes*i + 5  # Vertical lidar angle range in degrees
-    v_range = 30 - 30/nframes*i + 5 # Horizontal lidar angle range in degrees
+    fov = np.rad2deg(2*np.arctan2(res_box / 2, d[i]))
+    h_resolution = int(fov / ang_res)
+    v_resolution = int(fov / ang_res)
+    h_range = fov  # Vertical lidar angle range in degrees
+    v_range = fov  # Horizontal lidar angle range in degrees
 
+    print("FOV is (degrees): " + str(fov))
+    print("Resolution is (rays): " + str(h_resolution))
     debris = mesh.Mesh.from_file(debris_file)  # Grab satellite mesh
     # solve for rotation matrix  B^R_L (R*L => B)
     Rot_L_to_B.append(getR(x[i],y[i],z[i]))
@@ -286,6 +293,7 @@ for i in range(nframes):
     omega_B = Rot_L_to_B[i]@omega_L
     X, Y, Z, V_los = lidarScan2.point_cloud(O_B, h_resolution, v_resolution, h_range, v_range, debris, debris_pos_B, debris_vel_B, omega_B)  # Generate distances
     # obtain points and LOS velocities in {B}
+    print("Number of rays hit: " + str(len(X)))
     XBs.append(X)
     YBs.append(Y)
     ZBs.append(Z)
