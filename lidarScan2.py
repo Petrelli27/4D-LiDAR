@@ -89,4 +89,4 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
     #axes.set_zlabel('z')
     # pyplot.show()
 
-    return Xn, Yn, Zn, v_los_vn
+    return Xn, Yn, Zn, Vn
