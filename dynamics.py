@@ -2,6 +2,7 @@
 
 import math
 import matplotlib.pyplot as plt
+import numpy as np
 
 def CW2(r0, rdot0, omeg, t):
     """
@@ -87,6 +88,22 @@ def propagate(dt, nframes, r0, rdot0, omeg):
     ax.set_ylabel('y (m)')
     ax.set_zlabel('z (m)')
     ax.plot3D(xs, ys, zs, 'gray')
-    # plt.show()
+    plt.show()
 
     return xs, ys, zs, vxs, vys, vzs, d, v
+
+if __name__ == '__main__':
+
+    # Dynamics initializations
+    r0 = [-0.17, -0.35, -0.02]  # initial starting position of chaser (km)
+    rdot0 = [0.000, 0.00045, 0.0001]  # initial velocity of debris relative to chaser(km/s)
+    R = 500 + 6378  # Altitude of orbit (km)
+    mu = 398600.5  # Gravitational constant
+    omeg = math.sqrt(mu / R ** 3)  # n in the derivations
+
+    # specify time frame and time step
+    nframes = 20000
+    dt = 0.05
+
+    # simulate debris velocity (linear and angular) in {L} frame from dynamics
+    x, y, z, vx, vy, vz, d, v = propagate(dt, nframes, r0, rdot0, omeg)

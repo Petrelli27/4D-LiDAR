@@ -220,8 +220,10 @@ def verticeupdate(dt, x_k):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 # Dynamics initializations
-r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
-rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
+# r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
+# rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
+r0 = [-0.17, -0.35, -0.02]  # initial starting position of chaser (km) - New initial conditions!
+rdot0 = [0.000, 0.00045, 0.0001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!
 R = 500 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
