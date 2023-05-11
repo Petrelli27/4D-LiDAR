@@ -257,7 +257,7 @@ def verticeupdate(dt, x_k):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim2000_fixed.pickle', 'rb') as sim_data:
+with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -321,7 +321,7 @@ Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz,
 # Measurement noise covariance matrix
 pxz = 500
 py = 500
-om = 0.7
+om = 0.4
 vn = 0.01
 pxyz = 0.05
 pyy = 0.01
@@ -361,7 +361,8 @@ P_s = []
 # ax.set_ylabel('y')
 # ax.set_zlabel('z')
 
-n_moving_average = 50
+n_moving_average = 100
+settling_time = 500
 omega_kabsch_b = np.zeros((nframes, 3))
 omega_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
@@ -534,8 +535,10 @@ for i in range(nframes):
         axis_B_to_B = Rot_B_to_L[i] @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
         omega_L_to_B = (angle_B_to_B * axis_B_to_B)/dt
         # print(omega_L_to_B, angle_B_to_B)
-    # z_omega_k = z_omega_k + omega_L_to_B # ignores kabsch
-    z_omega_k = z_omega_k + omega_los_L + omega_L_to_B
+    if i <= settling_time:
+        z_omega_k = z_omega_k + omega_L_to_B # ignores kabsch
+    else:
+        z_omega_k = z_omega_k + omega_los_L + omega_L_to_B
     omega_lls_b[i,:] = z_omega_k_B
     omega_kabsch_b[i,:] = omega_los_B_averaged
     # z_omega_k = [1., 1., 1.]
@@ -658,6 +661,15 @@ plt.ylabel('Angular Velocity (rad/s)')
 plt.title('Omega Y')
 
 fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_omegas[:,2], label='Measured', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,8], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=2)
+plt.legend()
+plt.xlabel('Times (s)')
+plt.ylabel('Angular Velocity (rad/s)')
+plt.title('Omega Z')
+
+fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,6] - 1, label='Error X', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,7] - 1, label='Error Y', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,8] - 1, label='Error Z', linewidth=2)
@@ -666,15 +678,6 @@ plt.legend()
 plt.xlabel('Times (s)')
 plt.ylabel('Error (rad/s)')
 plt.title('Angular Velocity Errors')
-
-fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_omegas[:,2], label='Measured', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,8], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=2)
-plt.legend()
-plt.xlabel('Times (s)')
-plt.ylabel('Angular Velocity (rad/s)')
-plt.title('Omega Z')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0] - debris_pos[:,0], label='Error X', linewidth=2)
