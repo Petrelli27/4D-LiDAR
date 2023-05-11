@@ -228,12 +228,12 @@ R = 500 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([0.5,0.5,0.5]) # inertial, unchanging angular velocity of debris
+omega_L = np.array([1, 1, 1]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
-nframes = 10
-dt = 100
+nframes = 2000
+dt = 0.05
 
 # simulate debris velocity (linear and angular) in {L} frame from dynamics
 x, y, z, vx, vy, vz, d, v = dynamics.propagate(dt, nframes, r0, rdot0, omeg)
@@ -265,10 +265,11 @@ for i in range(nframes):
     print("Current iteration: " + str(i))
 
     fov = np.rad2deg(2*np.arctan2(res_box / 2, d[i]))
-    h_resolution = int(fov / ang_res)
-    v_resolution = int(fov / ang_res)
+    h_resolution = int(fov / ang_res) if fov < 1 else 40
+    v_resolution = int(fov / ang_res) if fov < 1 else 40
     h_range = fov  # Vertical lidar angle range in degrees
     v_range = fov  # Horizontal lidar angle range in degrees
+
 
     print("FOV is (degrees): " + str(fov))
     print("Resolution is (rays): " + str(h_resolution))
@@ -319,6 +320,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim100_variable_fov.pickle', 'wb') as sim_data:
+with open('sim_new_conditions.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 
