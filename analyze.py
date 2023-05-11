@@ -294,9 +294,9 @@ VLs = VBs
 L_0 = 2  # Initial Length of box - x
 D_0 = 2  # Initial Width of box - y
 H_0 = 2  # Initial Height of box - z
-p_0 = [10., 10., 10.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
+p_0 = [-200., -200., -50.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
 v_0 = [1., 1., 1.]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [2.,2.,2.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
+omega_0 = [5.,-5.,4.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
 # For the initializations, imagine a bounding box bottom right = p1, bottom left = p2, TP = p3, TR = p4, p5, p6, p7, p8 are
 # the same but in the back, centered at p0
 p1_0 = p_0 + np.array([L_0/2, -D_0/2, -H_0/2])
@@ -321,7 +321,7 @@ Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz,
 # Measurement noise covariance matrix
 pxz = 500
 py = 500
-om = 0.4
+om = 0.25
 vn = 0.01
 pxyz = 0.05
 pyy = 0.01
