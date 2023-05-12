@@ -57,8 +57,8 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
         pi_idx = trunc(all_idx/8)
         z_idx = all_idx % 8
         #print(z_idx)
-        z_pis[pi_idx,:] = z_pi_k[z_idx,:]
-        ec_dists[pi_idx,:] = 1000
+        z_pis[pi_idx, :] = z_pi_k[z_idx, :]
+        ec_dists[pi_idx, :] = 1000
         ec_dists[:, z_idx] = 1000
 
     z_p1_k = z_pis[0, :] + np.array(z_c_k)
