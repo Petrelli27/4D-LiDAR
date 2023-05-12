@@ -296,7 +296,8 @@ D_0 = 2  # Initial Width of box - y
 H_0 = 2  # Initial Height of box - z
 p_0 = [-200., -200., -50.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
 v_0 = [1., 1., 1.]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [5., -5., 4.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
+omega_0 = [5.,-5.,4.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
+
 # For the initializations, imagine a bounding box bottom right = p1, bottom left = p2, TP = p3, TR = p4, p5, p6, p7, p8 are
 # the same but in the back, centered at p0
 p1_0 = p_0 + np.array([L_0/2, -D_0/2, -H_0/2])
@@ -641,7 +642,10 @@ ax.scatter(z_p_s[1,0], z_p_s[1,1], z_p_s[1,2], color='g', marker='o', s=20)
 ax.scatter(z_p_s[-1,0], z_p_s[-1,1], z_p_s[-1,2], color='k', marker='o', s=20)
 ax.scatter(z_p_s[:,0], z_p_s[:,1], z_p_s[:,2], color='r', s=1)
 ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='b')
-plt.legend(['Start','End','Estimated Centroid Positions', 'True Centroid Positions'])
+plt.legend(['Start','End','Computed Centroid Positions', 'True Centroid Positions'])
+plt.xlim([-171,-167])
+plt.ylim([-351,-306])
+ax.set_zlim(-20,-9)
 # ax.set_aspect('equal')
 
 
@@ -671,6 +675,7 @@ plt.plot(np.arange(0, dt*nframes, dt), z_omegas[:,2], label='Computed', linewidt
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,8], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=1, linestyle='dashed')
 plt.legend()
+
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle\Omega_z$ (rad/s)')
 #plt.title('Omega Z')
@@ -689,6 +694,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0] - debris_pos[:,0], label='Error $\displaystyle p_x$', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Error $\displaystyle p_y$', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,2] - debris_pos[:,2], label='Error $\displaystyle p_x$', linewidth=2)
+
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Position Error (m)')
@@ -696,7 +702,9 @@ plt.ylabel('Position Error (m)')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,0], label='Computed', linewidth=1)
+
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0], label='Estimated', linewidth=2)
+
 plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
@@ -707,6 +715,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,1], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
+
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle p_y$ (m)')
@@ -725,6 +734,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_v_s[:,0] - debris_vel[:,0], label='Error $\displaystyle v_{Tx}$', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), z_v_s[:,1] - debris_vel[:,1], label='Error $\displaystyle v_{Ty}$', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), z_v_s[:,2] - debris_vel[:,2], label='Error $\displaystyle v_{Tz}$', linewidth=1)
+
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Velocity Error (m/s)')
@@ -770,6 +780,7 @@ for i in range(nframes):
     true_b.append(Rot_L_to_B[i] @ [1,1,1]) 
 true_b = np.array(true_b)
 plt.plot(np.arange(0, dt*nframes, dt), true_b[:,2], label='True')
+
 plt.plot(np.arange(0, dt*nframes, dt), omega_kabsch_b[:,2], label='Computed')
 plt.legend()
 plt.xlabel('Time (s)')
