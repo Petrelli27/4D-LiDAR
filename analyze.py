@@ -638,7 +638,10 @@ ax.scatter(z_p_s[1,0], z_p_s[1,1], z_p_s[1,2], color='g', marker='o', s=20)
 ax.scatter(z_p_s[-1,0], z_p_s[-1,1], z_p_s[-1,2], color='k', marker='o', s=20)
 ax.scatter(z_p_s[:,0], z_p_s[:,1], z_p_s[:,2], color='r', s=1)
 ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='b')
-plt.legend(['Start','End','Estimated Centroid Positions', 'True Centroid Positions'])
+plt.legend(['Start','End','Computed Centroid Positions', 'True Centroid Positions'])
+plt.xlim([-171,-167])
+plt.ylim([-351,-306])
+ax.set_zlim(-20,-9)
 # ax.set_aspect('equal')
 
 
