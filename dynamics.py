@@ -99,7 +99,7 @@ if __name__ == '__main__':
     # Dynamics initializations
     r0 = [-0.17, -0.35, -0.02]  # initial starting position of chaser (km)
     rdot0 = [0.000, 0.00045, 0.0001]  # initial velocity of debris relative to chaser(km/s)
-    R = 500 + 6378  # Altitude of orbit (km)
+    R = 670 + 6378  # Altitude of orbit (km)
     mu = 398600.5  # Gravitational constant
     omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 
