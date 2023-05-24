@@ -18,19 +18,19 @@ def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color):
     ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color)  # W
     ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color)
     ax.plot([p3[0], p4[0]], [p3[1], p4[1]], [p3[2], p4[2]], color=color)
-    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color=color)
+    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color='g')
 
     # z1 plane boundary
     ax.plot([p5[0], p6[0]], [p5[1], p6[1]], [p5[2], p6[2]], color=color)  # W
     ax.plot([p6[0], p7[0]], [p6[1], p7[1]], [p6[2], p7[2]], color=color)
     ax.plot([p7[0], p8[0]], [p7[1], p8[1]], [p7[2], p8[2]], color=color)
-    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color=color)
+    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color='g')
 
     # Connecting
-    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color=color)  # W
+    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color='g')  # W
     ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color)
     ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color)
-    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color='g')
 
     ax.scatter(p1[0], p1[1], p1[2], color='b')
     ax.scatter(p2[0], p2[1], p2[2], color='g')
@@ -257,7 +257,7 @@ def verticeupdate(dt, x_k):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_new_conditions.pickle', 'rb') as sim_data:
+with open('sim_kompsat670.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -325,7 +325,7 @@ py = 500
 om = 0.25
 vn = 0.01
 pxyz = 0.05
-pyy = 0.01
+pyy = 0.05
 R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
                pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 #R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
@@ -435,8 +435,6 @@ for i in range(nframes):
     # Return bounding box and centroid estimate of bounding box
     z_pi_k, z_p_k = boundingbox.bbox3d(X_i, Y_i, Z_i)
 
-
-
     # Vertice association
     pi_pk1 = [p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1]
     z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k = nearest_search(pi_pk1-p_k-v_k*dt, z_pi_k, z_p_k)
@@ -448,15 +446,14 @@ for i in range(nframes):
     #ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
     # ax.add_collection3d(mplot3d.art3d.Poly3DCollection(debris.vectors, alpha=0.3))
     # drawrectangle(ax, z_pi_k[:,0], z_pi_k[:,1], z_pi_k[:,2], z_pi_k[:,3], z_pi_k[:,4], z_pi_k[:,5], z_pi_k[:,6], z_pi_k[:,7], 'b')
-    # if  i%500 == 0:
-    if False:
+    if i>1000 and i%10 == 0:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.legend()
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_zlabel('z')
-        #ax.scatter(X_i, Y_i, Z_i)
+        ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=0.5)
         drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
         drawrectangle(ax, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k, 'b')
         ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
@@ -638,12 +635,12 @@ ax.legend()
 ax.set_xlabel('x (m)')
 ax.set_ylabel('y (m)')
 ax.set_zlabel('z (m)')
-ax.scatter(z_p_s[1,0], z_p_s[1,1], z_p_s[1,2], color='g', marker='o', s=20)
-ax.scatter(z_p_s[-1,0], z_p_s[-1,1], z_p_s[-1,2], color='k', marker='o', s=20)
-ax.scatter(z_p_s[:,0], z_p_s[:,1], z_p_s[:,2], color='r', s=1)
-ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='b')
+ax.scatter(debris_pos[1,0], debris_pos[1,1], debris_pos[1,2], color='orange', marker='o', s=20)
+ax.scatter(debris_pos[-1,0], debris_pos[-1,1], debris_pos[-1,2], color='k', marker='o', s=20)
+ax.scatter(z_p_s[:,0], z_p_s[:,1], z_p_s[:,2], color='b', s=0.3, linewidths=0)
+ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='g')
 plt.legend(['Start','End','Computed Centroid Positions', 'True Centroid Positions'])
-plt.xlim([-171,-167])
+plt.xlim([-170.5,-167.5])
 plt.ylim([-351,-306])
 ax.set_zlim(-20,-9)
 # ax.set_aspect('equal')
