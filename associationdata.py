@@ -71,3 +71,40 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
     z_p8_k = z_pis[7, :] + np.array(z_c_k)
 
     return z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k
+
+def mahalobis_association(pi_k, z_pi_k, z_c_k, cov):
+
+
+    z_pi_k = z_pi_k.T - z_c_k
+    mb_dists = np.zeros([8,8])
+    z_pis = np.zeros([8,3])
+
+    for i, pi_k_i in enumerate(pi_k):
+
+        cov_i = cov[3*i:3*i+3, 3*i:3*i+3]
+        for j, z_pi_k_j in enumerate(z_pi_k):
+            # Compute the Mahalobis distance between two points
+            res = z_pi_k_j - pi_k_i
+            mb_dist = np.matmul(res, np.matmul(np.linalg.inv(cov_i), res))
+            mb_dists[i, j] = mb_dist
+
+    for i, mb_dist in enumerate(mb_dists):
+        #print(ec_dists)
+        all_idx = np.argmin(mb_dists)
+        pi_idx = trunc(all_idx/8)
+        z_idx = all_idx % 8
+        #print(z_idx)
+        z_pis[pi_idx,:] = z_pi_k[z_idx,:]
+        mb_dists[pi_idx,:] = 1000
+        mb_dists[:, z_idx] = 1000
+
+    z_p1_k = z_pis[0, :] + np.array(z_c_k)
+    z_p2_k = z_pis[1, :] + np.array(z_c_k)
+    z_p3_k = z_pis[2, :] + np.array(z_c_k)
+    z_p4_k = z_pis[3, :] + np.array(z_c_k)
+    z_p5_k = z_pis[4, :] + np.array(z_c_k)
+    z_p6_k = z_pis[5, :] + np.array(z_c_k)
+    z_p7_k = z_pis[6, :] + np.array(z_c_k)
+    z_p8_k = z_pis[7, :] + np.array(z_c_k)
+
+    return z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k
