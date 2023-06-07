@@ -28,7 +28,7 @@ def getR(x,y,z):
     z_B = p/np.linalg.norm(p)
     e = (np.cross(z_L, z_B))[:,np.newaxis] # 3x1 axis of rotation
     phi = np.arccos(np.dot(z_B, z_L)) # z_B and z_L are already unit vectors
-    R = e@(e.T) + (np.identity(3)-(e@e.T))*np.cos(phi) + tilde(e)*np.sin(phi)
+    R = e@(e.T) + (np.identity(3)-(e@e.T))*np.cos(phi) + skew(e)*np.sin(phi)
     return R.T
 
 def rodrigues(omega, dt):
@@ -39,6 +39,99 @@ def rodrigues(omega, dt):
     e_tilde = skew(e_omega)
     R = ee_t + (np.eye(len(e_omega)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
     return R
+
+def verticeupdate(dt, x_k):
+
+    # Decompose the state vector
+    p_k = x_k[:3]
+    v_k = x_k[3:6]
+    omega_k = x_k[6:9]
+    p1_k = x_k[9:12]
+
+    # Rotation matrix - rodrigues formula
+    R_k_kp1 = rodrigues(omega_k, dt)
+
+    # Translate vertex to origin
+    p1_ko = p1_k - p_k
+
+    # Rotate vertices
+    p1_kp1o = np.matmul(R_k_kp1, p1_ko.reshape(len(p1_ko), 1))
+
+    # Translate vertex back to new expected origin
+    p1_kp1 = (p1_kp1o.T + p_k + v_k * dt).ravel()
+
+    return p1_kp1, R_k_kp1
+
+def orientationupdate(dt, x_k):
+
+    # Decompose the state vector
+    omega_k = x_k[6:9]
+    q_k = x_k[12:16]
+
+    hamilton = [-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
+                omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
+                omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
+                omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]]
+
+    return 0.5 * dt * hamilton + q_k
+
+def F_matrix(dt, R, x_k):
+    """
+
+    :param dt:
+    :param R:
+    :param p_k:
+    :param p1_k:
+    :param p2_k:
+    :param p3_k:
+    :param p4_k:
+    :param p5_k:
+    :param p6_k:
+    :param p7_k:
+    :param p8_k:
+    :return:
+    """
+
+    p_k = x_k[:3]
+    omega_k = x_k[6:9]
+    p1_k = x_k[9:12]
+    q_k = x_k[12:]
+
+    F = np.eye(16)
+
+    # dp_k/dvT_k
+    F[0, 3] = dt
+    F[1, 4] = dt
+    F[2, 5] = dt
+
+    # dp1_k/dp_k
+    F[9:12, 0:3] = np.eye(3) - R
+
+    # dp1_k/dvT_k
+    F[9, 3] = dt
+    F[10, 4] = dt
+    F[11, 5] = dt
+
+    # dp1_k/domega_k
+    F[9:12, 6:9] = skew(p1_k - p_k)
+
+    # dp1_k/dp1_k
+    F[9:12, 9:12] = R
+
+    # dq_k/domega_k
+    q_123k = q_k[1:]
+    q_0k = q_k[0]
+    bottom = np.array(skew(q_123k) + q_0k * np.eye(3))
+    F[12:, 6:9] = 0.5 * dt * np.concatenate((-np.array([q_123k]), bottom), axis=0)
+
+    # dq_k/dq_k
+    F_temp = np.zeros((4, 4))
+    F_temp[0, 1:] = -np.array(omega_k)
+    F_temp[1:, 0] = omega_k
+    F_temp[1:, 1:] = skew(omega_k)
+    F[12:, 12:] = F_temp + np.eye(4)
+
+    return F
 
 # initialize debris position, velocity and orientation
 O_B = np.array([0,0,0])
@@ -78,18 +171,39 @@ q_0 = [1.,0.,0.,0.] # initialize orientation as a unit quaternion
 p1_0 = p_0 + np.array([L_0/2, -D_0/2, -H_0/2]) 
 x_0 = np.array([p_0, v_0, omega_0, p1_0, q_0]).ravel()
 x_k = x_0.copy()  # State vector
+
+# Initial covariance
+P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
+               0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25])  # Initial Covariance matrix
+P_k = P_0.copy()  # covariance matrix
+
+# Process noise covariance matrix
+qp = 0.000025
+qv = 0.0000005
+qom = 0.00005
+qpi = 0.00005
+qq = 0.0005
+Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qpi, qpi, qpi, qq, qq, qq, qq])
+
+# Measurement noise covariance matrix
+p = 500
+om = 0.25
+pi = 0.05
+q = 0.01
+R = np.diag([p, p, p, om, om, om, pi, pi, pi, q, q, q, q])
+
+
 for i in range(nframes):
+
     # Decompose the state vector
     p_k = x_k[:3]
     v_k = x_k[3:6]
     omega_k = x_k[6:9]
+    q_k = x_k[12:16]
 
     ##############
-    # Update state
+    # Prediction
     ##############
-
-    # Centroid from vertices
-    c_k = 0 
 
     # Position update
     p_kp1 = v_k * dt + p_k
@@ -100,14 +214,23 @@ for i in range(nframes):
     # Angular velocity update
     omega_kp1 = omega_k.copy()
 
+    # Vertex update
+    p1_kp1, R_k_kp1 = verticeupdate(dt, x_k)
+
+    # Orientation Update
+    q_kp1 = orientationupdate(dt, x_k)
+
     # Compute Jacobian
+    F_kp1 = F_matrix(dt, R_k_kp1, x_k)
 
     # Update Covariance
+    P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
 
     # Make updated State vector
+    x_kp1 = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1]).ravel()
 
     #######################
-    # Make measurements
+    # Measurements
     #######################
     PLs.append((linalg.inv(Rot_L_to_B[i]) @ (PBs[i]).T).T)
     # find bounding box from points
@@ -121,7 +244,7 @@ for i in range(nframes):
     # find bounding box from points
 
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)
+    z_pi_k, z_p_k = boundingbox.bbox3d(X_i, Y_i, Z_i)
 
     # Orientation association
     # R_1 is obtained from bounding box
@@ -136,7 +259,7 @@ for i in range(nframes):
                 continue # skip over case where x and y axis overlap
             else:
                 z_axis = np.cross(x_axis, y_axis)
-                possible_R = np.array([x_axis, y_axis, z_axis]) @ R_1
+                possible_R = np.array(x_axis, y_axis, z_axis)
                 possible_Rs.append(possible_R)
                 rotation_diff = (predicted_R.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(possible_R)-1)/2)
@@ -156,7 +279,7 @@ for i in range(nframes):
     # Compute Measurement Vector
 
     ##############
-    # Combine Measurement and Estimates
+    # Update - Combine Measurement and Estimates
     ##############
 
     # Calculate Kalman gain
