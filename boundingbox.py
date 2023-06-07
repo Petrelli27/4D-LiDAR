@@ -22,7 +22,7 @@ def draw3DRectangle(ax, x1, y1, z1, x2, y2, z2):
     ax.plot([x2, x2], [y1, y1], [z1, z2], color='b')  # <--
 
 
-def bbox3d(x, y, z):
+def bbox3d(x, y, z, return_evec=False):
     """
 
     :param x: x point cloud data
@@ -124,7 +124,9 @@ def bbox3d(x, y, z):
     c_z = sum(rrc[2,:])/len(rrc[2,:])
 
     #ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
-
-    return rrc, [c_x,c_y,c_z]
+    if return_evec:
+        return rrc, [c_x,c_y,c_z], evec
+    else:
+        return rrc, [c_x,c_y,c_z]
 
 

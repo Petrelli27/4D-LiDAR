@@ -121,7 +121,7 @@ for i in range(nframes):
     # find bounding box from points
 
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k = boundingbox.bbox3d(X_i, Y_i, Z_i)
+    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)
 
     # Orientation association
     # R_1 is obtained from bounding box
@@ -136,7 +136,7 @@ for i in range(nframes):
                 continue # skip over case where x and y axis overlap
             else:
                 z_axis = np.cross(x_axis, y_axis)
-                possible_R = np.array(x_axis, y_axis, z_axis)
+                possible_R = np.array([x_axis, y_axis, z_axis]) @ R_1
                 possible_Rs.append(possible_R)
                 rotation_diff = (predicted_R.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(possible_R)-1)/2)
