@@ -70,11 +70,11 @@ def orientationupdate(dt, x_k):
     omega_k = x_k[6:9]
     q_k = x_k[12:16]
 
-    hamilton = [-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
+    hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
                 omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
                 omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
-                omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]]
-
+                omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]])
+    
     return 0.5 * dt * hamilton + q_k
 
 def F_matrix(dt, R, x_k):
@@ -169,6 +169,7 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
+omega_0 = [0.5,0.1,1.]
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -239,7 +240,7 @@ for i in range(nframes):
         P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
 
         # Make updated State vector
-        x_kp1 = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1]).ravel()
+        x_kp1 = np.hstack([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1])
 
     #######################
     # Measurements
@@ -267,46 +268,49 @@ for i in range(nframes):
     associatedBbox, L, W, H = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
     z_p1_k = associatedBbox[:,1]
     # find angular velocity from LOS velocities
-    # 1. Linear Least Squares
-    omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@p_k, Rot_L_to_B[i]@v_k, VBs[i])
-    omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
-
-    ################################ I think to use Kabsch you need i > 0, to wait for state initializations?
-    # 2. Rotation of B Frame
-    omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
-
-    # 3. Kabsch
-    if i==0:
-        omega_los_L = np.array([0,0,0])
+    if i == 0:
+        z_omega_k = omega_0
     else:
-        cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
-        cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
-        # rotate previous box with everything else
-        prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
-        omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
-        prev_box_B = cur_box_B # for next iteration
+        # 1. Linear Least Squares
+        omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@z_p_k, Rot_L_to_B[i]@v_k, VBs[i])
+        omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
-        # using moving average to smooth out omega_los_B
-        omega_kabsch_b_box[i%n_moving_average] = omega_los_B
-        if i < n_moving_average:
-            omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
+        ################################ I think to use Kabsch you need i > 0, to wait for state initializations?
+        # 2. Rotation of B Frame
+        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+
+        # 3. Kabsch
+        if i==0:
+            omega_los_L = np.array([0,0,0])
         else:
-            omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
-        omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
+            cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
+            cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
+            # rotate previous box with everything else
+            prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
+            omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+            prev_box_B = cur_box_B # for next iteration
 
-    # Combine angular velocity estimates
-    if i <= settling_time:
-        z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
-    else:
-        z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
+            # using moving average to smooth out omega_los_B
+            omega_kabsch_b_box[i%n_moving_average] = omega_los_B
+            if i < n_moving_average:
+                omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
+            else:
+                omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+            omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
+
+        # Combine angular velocity estimates
+        if i <= settling_time:
+            z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
+        else:
+            z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
     #################################
 
     # Compute Measurement Vector
-    z_kp1 = np.array([z_p_k, z_omega_k, z_p1_k, z_q_k]).ravel()
+    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
 
     # Set initial states to measurements
     if i == 0:
-        x_k = np.array([z_p_k, z_omega_k, vT_0, z_p1_k, z_q_k]).ravel()
+        x_k = np.hstack([z_p_k, z_omega_k, vT_0, z_p1_k, z_q_k])
 
     ##############
     # Update - Combine Measurement and Estimates
@@ -330,8 +334,9 @@ for i in range(nframes):
             P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
 
     # Transfer states and covariance from kp1 to k
-    P_k = P_kp1.copy()
-    x_k = x_kp1.copy()
+    if i>0:
+        P_k = P_kp1.copy()
+        x_k = x_kp1.copy()
 
     # Append for analysis
     z_s.append(z_p_k)

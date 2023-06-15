@@ -136,7 +136,7 @@ def associated(z_q_k, z_pi_k, z_p_k):
     # this is z_p1_k
     R = Rotation.from_quat(z_q_k)
     R_matrix = R.as_matrix()
-    centered_coords = z_pi_k - z_p_k
+    centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
     aligned_coords = R_matrix.T @ centered_coords
 
     xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
@@ -147,8 +147,8 @@ def associated(z_q_k, z_pi_k, z_p_k):
                                                           [z1, z1, z1, z1, z2, z2, z2, z2]])
     
     nrc = rectCoords(xmin, ymin, zmin, xmax, ymax, zmax)  # nrc = non rotated rectangle
-    rrc = np.matmul(R, nrc)  # rrc = rotated rectangle coordinates
-    associatedBbox = rrc + z_p_k
+    rrc = np.matmul(R_matrix, nrc)  # rrc = rotated rectangle coordinates
+    associatedBbox = rrc + np.array(z_p_k).reshape((3,1))
     L = xmax - xmin
     W = ymax - ymin
     H = zmax - zmin
