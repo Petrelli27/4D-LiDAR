@@ -1,7 +1,36 @@
 import numpy as np
 from math import trunc
+import matplotlib.pyplot as plt
 
 # some utility functions
+def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color):
+    # z1 plane boundary
+    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color)  # W
+    ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color)
+    ax.plot([p3[0], p4[0]], [p3[1], p4[1]], [p3[2], p4[2]], color=color)
+    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color='g')
+
+    # z1 plane boundary
+    ax.plot([p5[0], p6[0]], [p5[1], p6[1]], [p5[2], p6[2]], color=color)  # W
+    ax.plot([p6[0], p7[0]], [p6[1], p7[1]], [p6[2], p7[2]], color=color)
+    ax.plot([p7[0], p8[0]], [p7[1], p8[1]], [p7[2], p8[2]], color=color)
+    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color='g')
+
+    # Connecting
+    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color='g')  # W
+    ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color)
+    ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color='g')
+
+    ax.scatter(p1[0], p1[1], p1[2], color='b')
+    ax.scatter(p2[0], p2[1], p2[2], color='g')
+    ax.scatter(p3[0], p3[1], p3[2], color='r')
+    ax.scatter(p4[0], p4[1], p4[2], color='c')
+    ax.scatter(p5[0], p5[1], p5[2], color='m')
+    ax.scatter(p6[0], p6[1], p6[2], color='y')
+    ax.scatter(p7[0], p7[1], p7[2], color='k')
+    ax.scatter(p8[0], p8[1], p8[2], color='b')
+
 def tilde(v):
     vx = v[0,0]
     vy = v[1,0]
@@ -22,23 +51,7 @@ def getR(x,y,z):
 def nearest_search(pi_k, z_pi_k, z_c_k):
     """ Identify a set of points from the target set that is closest to the
         source set, based on nearest neighbour search with the L2 norm.
-
-        Keyword Arguments:
-        ------------------
-        pcd_source: list with 3 columns containing point cloud data from the source (x, y ,z)
-
-
-        pcd_target : list with 3 columns containing point cloud data from the target (x, y ,z)
-
-        Returns:
-        --------
-        corr_source, corr_target : corr_source[i] is the (x,y,z) point which has the closest
-                                    Euclidean distance to point corr_target[i], for each point
-                                    in pcd_source
-
-        ec_dist_mean : data containing the mean euclidean distance between the points of corr_source
-                        and corr_target for a single iteration of ICP (see ICP funciton later)
-        """
+    """
 
     z_pi_k = z_pi_k.T - z_c_k
     ec_dist_i = []
@@ -49,11 +62,14 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
 
         # Compute the L2 norm between these two points
         ec_dist = np.sqrt(sum((i - j) ** 2 for i, j in zip(z_pi_k.T, pi_k_i)))
-        ec_dists[i,:] = ec_dist
+        ec_dists[i, :] = ec_dist
 
+    print(ec_dists)
+    print("Hello")
     for i, ec_dist in enumerate(ec_dists):
         #print(ec_dists)
         all_idx = np.argmin(ec_dists)
+        print(all_idx)
         pi_idx = trunc(all_idx/8)
         z_idx = all_idx % 8
         #print(z_idx)
@@ -72,39 +88,8 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
 
     return z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k
 
-def mahalobis_association(pi_k, z_pi_k, z_c_k, cov):
+def mahalonobis_association(pi_k, z_pi_k, z_c_k):
 
+    z_pi_k = z_pi_k.T - z_c_k  # translate to origin
 
-    z_pi_k = z_pi_k.T - z_c_k
-    mb_dists = np.zeros([8,8])
-    z_pis = np.zeros([8,3])
-
-    for i, pi_k_i in enumerate(pi_k):
-
-        cov_i = cov[3*i:3*i+3, 3*i:3*i+3]
-        for j, z_pi_k_j in enumerate(z_pi_k):
-            # Compute the Mahalobis distance between two points
-            res = z_pi_k_j - pi_k_i
-            mb_dist = np.matmul(res, np.matmul(np.linalg.inv(cov_i), res))
-            mb_dists[i, j] = mb_dist
-
-    for i, mb_dist in enumerate(mb_dists):
-        #print(ec_dists)
-        all_idx = np.argmin(mb_dists)
-        pi_idx = trunc(all_idx/8)
-        z_idx = all_idx % 8
-        #print(z_idx)
-        z_pis[pi_idx,:] = z_pi_k[z_idx,:]
-        mb_dists[pi_idx,:] = 1000
-        mb_dists[:, z_idx] = 1000
-
-    z_p1_k = z_pis[0, :] + np.array(z_c_k)
-    z_p2_k = z_pis[1, :] + np.array(z_c_k)
-    z_p3_k = z_pis[2, :] + np.array(z_c_k)
-    z_p4_k = z_pis[3, :] + np.array(z_c_k)
-    z_p5_k = z_pis[4, :] + np.array(z_c_k)
-    z_p6_k = z_pis[5, :] + np.array(z_c_k)
-    z_p7_k = z_pis[6, :] + np.array(z_c_k)
-    z_p8_k = z_pis[7, :] + np.array(z_c_k)
-
-    return z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k
+    return
