@@ -112,7 +112,7 @@ def rotation_association(q_kp1, R_1):
                 possible_R = np.array(x_axis, y_axis, z_axis) @ R_1
                 possible_Rs.append(possible_R)
                 rotation_diff = (predicted_R.T) @ (possible_R)
-                angle_diff = np.arccos((np.trace(possible_R) - 1) / 2)
+                angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
     R_index = np.argmin(np.abs(angle_diffs))
     associated_R = possible_Rs(R_index)

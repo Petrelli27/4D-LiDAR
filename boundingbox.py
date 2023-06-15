@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
 
 
@@ -128,5 +129,29 @@ def bbox3d(x, y, z, return_evec=False):
         return rrc, [c_x,c_y,c_z], evec
     else:
         return rrc, [c_x,c_y,c_z]
+    
+def associated(z_q_k, z_pi_k, z_p_k):  
+    # rotate z_pi_k by R_1
+    # find xmin ymin zmin
+    # this is z_p1_k
+    R = Rotation.from_quat(z_q_k)
+    centered_coords = z_pi_k - z_p_k
+    aligned_coords = R.T @ centered_coords
+
+    xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
+        aligned_coords[1, :]), np.max(aligned_coords[1, :]), np.min(aligned_coords[2, :]), np.max(aligned_coords[2, :])
+    
+    rectCoords = lambda x1, y1, z1, x2, y2, z2: np.array([[x1, x1, x2, x2, x1, x1, x2, x2],
+                                                          [y1, y2, y2, y1, y1, y2, y2, y1],
+                                                          [z1, z1, z1, z1, z2, z2, z2, z2]])
+    
+    nrc = rectCoords(xmin, ymin, zmin, xmax, ymax, zmax)  # nrc = non rotated rectangle
+    rrc = np.matmul(R, nrc)  # rrc = rotated rectangle coordinates
+    associatedBbox = rrc + z_p_k
+    L = xmax - xmin
+    W = ymax - ymin
+    H = zmax - zmin
+    return associatedBbox, L, W, H
+
 
 

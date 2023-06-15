@@ -1,3 +1,4 @@
+import copy
 import dynamics
 import math
 import matplotlib.pyplot as plt
@@ -8,7 +9,7 @@ import math
 import lidarScan2
 import boundingbox
 from stl import mesh
-from estimateOmega import estimate
+from estimateOmega import estimate_LLS, estimate_kabsch, estimate_rotation_B
 from associationdata import nearest_search
 from associationdata import rotation_association
 import pickle
@@ -194,6 +195,14 @@ H = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
 H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
+# Kabsch estimation parameters
+n_moving_average = 100
+settling_time = 500
+# Record keeping for angular velocity estimate
+omegas_kabsch_b = np.zeros((nframes, 3))
+omegas_lls_b = np.zeros((nframes, 3))
+omega_kabsch_b_box = np.zeros((n_moving_average,3))
+
 for i in range(nframes):
 
     # Use first measurements for initializations of states
@@ -247,21 +256,50 @@ for i in range(nframes):
     Z_i = ZLs[i]
 
     # Return bounding box and centroid estimate of bounding box
-    z_p1_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)
+    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True) # unassociated bbox
 
     # Orientation association
     # R_1 is obtained from bounding box
-    z_q_k = rotation_association(q_kp1, R_1)
+    if i == 0:
+        z_q_k = Rotation.as_quat(R_1)
+    else:
+        z_q_k = rotation_association(q_kp1, R_1)
 
+    associatedBbox, L, W, H = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
+    z_p1_k = associatedBbox[:,1]
     # find angular velocity from LOS velocities
     # 1. Linear Least Squares
-    z_omega_k_B = estimate(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@p_k, Rot_L_to_B[i]@v_k, VBs[i])
-    z_omega_k = Rot_B_to_L[i] @ z_omega_k_B
+    omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@p_k, Rot_L_to_B[i]@v_k, VBs[i])
+    omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
     ################################ I think to use Kabsch you need i > 0, to wait for state initializations?
     # 2. Rotation of B Frame
+    omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
 
     # 3. Kabsch
+    if i==0:
+        omega_los_L = np.array([0,0,0])
+    else:
+        cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
+        # rotate previous box with everything else
+        prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
+        omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+        prev_box_B = cur_box_B # for next iteration
+
+        # using moving average to smooth out omega_los_B
+        omega_kabsch_b_box[i%n_moving_average] = omega_los_B
+        if i < n_moving_average:
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
+        else:
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+        omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
+
+    # Combine angular velocity estimates
+    if i <= settling_time:
+        z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
+    else:
+        z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
     #################################
 
     # Compute Measurement Vector
