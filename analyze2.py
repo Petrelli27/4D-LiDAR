@@ -10,6 +10,7 @@ import boundingbox
 from stl import mesh
 from estimateOmega import estimate
 from associationdata import nearest_search
+from associationdata import rotation_association
 import pickle
 
 from mpl_toolkits import mplot3d
@@ -152,25 +153,21 @@ omega_L = data[8]
 dt = data[9]
 
 # Estimation Loop
-XLs = []
+XLs = []  # store point cloud x in L
 YLs = []
 ZLs = []
-PLs = []
-VLs = VBs
+PLs = []  # store x, y, z point cloud in L
+VLs = VBs  # store velocity point cloud
+x_s = []  # store states over time
+z_s = []  # store measurements over time
+P_s = []  # store covariances in time
 nframes = len(VBs)
-# Running the simulation
+
+
+# Running the simulation - Initializations
 
 # Initializations in L Frame
-L_0 = 2  # Initial Length of box - x
-D_0 = 2  # Initial Width of box - y
-H_0 = 2  # Initial Height of box - z
-p_0 = [-200., -200., -50.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
-v_0 = [1., 1., 1.]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [5.,-5.,4.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
-q_0 = [1.,0.,0.,0.] # initialize orientation as a unit quaternion
-p1_0 = p_0 + np.array([L_0/2, -D_0/2, -H_0/2]) 
-x_0 = np.array([p_0, v_0, omega_0, p1_0, q_0]).ravel()
-x_k = x_0.copy()  # State vector
+vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
@@ -181,57 +178,65 @@ P_k = P_0.copy()  # covariance matrix
 qp = 0.000025
 qv = 0.0000005
 qom = 0.00005
-qpi = 0.00005
+qp1 = 0.00005
 qq = 0.0005
-Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qpi, qpi, qpi, qq, qq, qq, qq])
+Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
 p = 500
 om = 0.25
-pi = 0.05
+p1 = 0.05
 q = 0.01
-R = np.diag([p, p, p, om, om, om, pi, pi, pi, q, q, q, q])
+R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
+# Measurement matrix
+H = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
+H[0:3,0:3] = np.eye(3)
+H[3:,6:] = np.eye(10)
 
 for i in range(nframes):
 
-    # Decompose the state vector
-    p_k = x_k[:3]
-    v_k = x_k[3:6]
-    omega_k = x_k[6:9]
-    q_k = x_k[12:16]
+    # Use first measurements for initializations of states
+    if i > 0:
+        # Decompose the state vector
+        p_k = x_k[:3]
+        v_k = x_k[3:6]
+        omega_k = x_k[6:9]
+        p1_k = x_k[9:12]
+        q_k = x_k[12:16]
 
-    ##############
-    # Prediction
-    ##############
+        ##############
+        # Prediction
+        ##############
 
-    # Position update
-    p_kp1 = v_k * dt + p_k
+        # Position update
+        p_kp1 = v_k * dt + p_k
 
-    # Velocity update
-    v_kp1 = v_k.copy()
+        # Velocity update
+        v_kp1 = v_k.copy()
 
-    # Angular velocity update
-    omega_kp1 = omega_k.copy()
+        # Angular velocity update
+        omega_kp1 = omega_k.copy()
 
-    # Vertex update
-    p1_kp1, R_k_kp1 = verticeupdate(dt, x_k)
+        # Vertex update
+        p1_kp1, R_k_kp1 = verticeupdate(dt, x_k)
 
-    # Orientation Update
-    q_kp1 = orientationupdate(dt, x_k)
+        # Orientation Update
+        q_kp1 = orientationupdate(dt, x_k)
 
-    # Compute Jacobian
-    F_kp1 = F_matrix(dt, R_k_kp1, x_k)
+        # Compute Jacobian
+        F_kp1 = F_matrix(dt, R_k_kp1, x_k)
 
-    # Update Covariance
-    P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
+        # Update Covariance
+        P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
 
-    # Make updated State vector
-    x_kp1 = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1]).ravel()
+        # Make updated State vector
+        x_kp1 = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1]).ravel()
 
     #######################
     # Measurements
     #######################
+
     PLs.append((linalg.inv(Rot_L_to_B[i]) @ (PBs[i]).T).T)
     # find bounding box from points
     XLs.append(PLs[i][:, 0])
@@ -241,60 +246,62 @@ for i in range(nframes):
     Y_i = YLs[i]
     Z_i = ZLs[i]
 
-    # find bounding box from points
-
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)
+    z_p1_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)
 
     # Orientation association
     # R_1 is obtained from bounding box
-    predicted_R = Rotation.from_quat(q_kp1)
-    possible_Rs = []
-    angle_diffs = []
-    possible_xs = np.array([[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]])
-    possible_ys = np.array([[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]])
-    for x_axis in possible_xs:
-        for y_axis in possible_ys:
-            if (x_axis == y_axis).all():
-                continue # skip over case where x and y axis overlap
-            else:
-                z_axis = np.cross(x_axis, y_axis)
-                possible_R = np.array(x_axis, y_axis, z_axis) @ R_1
-                possible_Rs.append(possible_R)
-                rotation_diff = (predicted_R.T) @ (possible_R)
-                angle_diff = np.arccos((np.trace(possible_R)-1)/2)
-                angle_diffs.append(angle_diff)
-    R_index = np.argmin(np.abs(angle_diffs))
-    associated_R = possible_Rs(R_index)
-    z_q_k = Rotation.as_quat(associated_R)
-    
+    z_q_k = rotation_association(q_kp1, R_1)
 
     # find angular velocity from LOS velocities
     # 1. Linear Least Squares
     z_omega_k_B = estimate(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@p_k, Rot_L_to_B[i]@v_k, VBs[i])
     z_omega_k = Rot_B_to_L[i] @ z_omega_k_B
+
+    ################################ I think to use Kabsch you need i > 0, to wait for state initializations?
     # 2. Rotation of B Frame
+
     # 3. Kabsch
+    #################################
 
     # Compute Measurement Vector
+    z_kp1 = np.array([z_p_k, z_omega_k, z_p1_k, z_q_k]).ravel()
+
+    # Set initial states to measurements
+    if i == 0:
+        x_k = np.array([z_p_k, z_omega_k, vT_0, z_p1_k, z_q_k]).ravel()
 
     ##############
     # Update - Combine Measurement and Estimates
     ##############
 
-    # Calculate Kalman gain
+    # allow for some time for states to settle
+    if i > 300:
+        if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.3:
+            pass
+        else:
+            # Calculate the Kalman gain
+            K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
 
-    # Calculate Residual
+            # Calculate Residual
+            res_kp1 = z_kp1 - np.matmul(H, x_kp1)
 
-    # Update State
+            # Update State
+            x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
 
-    # Update Covariance
+            # Update Covariance
+            P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
 
     # Transfer states and covariance from kp1 to k
+    P_k = P_kp1.copy()
+    x_k = x_kp1.copy()
 
     # Append for analysis
+    z_s.append(z_p_k)
+    P_s.append(P_k)
+    x_s.append(x_k)
 
-    ##############
-    # Plot relevant figures
-    ##############
-    # Plot relevant figures
+
+##############
+# Plot relevant figures
+##############
