@@ -267,10 +267,6 @@ for i in range(nframes):
     # Compute Measurement Vector
     z_kp1 = np.array([z_p_k, z_omega_k, z_p1_k, z_q_k]).ravel()
 
-    # Compute Measurement Matrix
-    # H[9:13, 0:3] = dqk/dpk
-    # H[9:13, 9:12] = dqk/dp1k
-
     # Set initial states to measurements
     if i == 0:
         x_k = np.array([z_p_k, z_omega_k, vT_0, z_p1_k, z_q_k]).ravel()
