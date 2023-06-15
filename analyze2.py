@@ -171,8 +171,7 @@ nframes = len(VBs)
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 
 # Initial covariance
-P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
-               0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25])  # Initial Covariance matrix
+P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
 P_k = P_0.copy()  # covariance matrix
 
 # Process noise covariance matrix
@@ -261,7 +260,7 @@ for i in range(nframes):
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
-        z_q_k = Rotation.as_quat(R_1)
+        z_q_k = Rotation.as_quat(Rotation.from_matrix(R_1))
     else:
         z_q_k = rotation_association(q_kp1, R_1)
 

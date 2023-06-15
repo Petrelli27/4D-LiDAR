@@ -99,6 +99,7 @@ def rotation_association(q_kp1, R_1):
     # Orientation association
     # R_1 is obtained from bounding box
     predicted_R = Rotation.from_quat(q_kp1)
+    predicted_R_matrix = predicted_R.as_matrix()
     possible_Rs = []
     angle_diffs = []
     possible_xs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]])
@@ -111,7 +112,7 @@ def rotation_association(q_kp1, R_1):
                 z_axis = np.cross(x_axis, y_axis)
                 possible_R = np.array(x_axis, y_axis, z_axis) @ R_1
                 possible_Rs.append(possible_R)
-                rotation_diff = (predicted_R.T) @ (possible_R)
+                rotation_diff = (predicted_R_matrix.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
     R_index = np.argmin(np.abs(angle_diffs))

@@ -135,8 +135,9 @@ def associated(z_q_k, z_pi_k, z_p_k):
     # find xmin ymin zmin
     # this is z_p1_k
     R = Rotation.from_quat(z_q_k)
+    R_matrix = R.as_matrix()
     centered_coords = z_pi_k - z_p_k
-    aligned_coords = R.T @ centered_coords
+    aligned_coords = R_matrix.T @ centered_coords
 
     xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
         aligned_coords[1, :]), np.max(aligned_coords[1, :]), np.min(aligned_coords[2, :]), np.max(aligned_coords[2, :])
