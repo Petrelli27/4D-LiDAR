@@ -6,7 +6,7 @@ import math
 import lidarScan2
 import boundingbox
 from stl import mesh
-from estimateOmega import estimate
+from estimateOmega import estimate_LLS as estimate
 from associationdata import nearest_search
 import pickle
 
@@ -647,7 +647,7 @@ ax.set_zlim(-20,-9)
 
 
 m1 = len(x_s)
-print(m1)
+# print(m1)
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_omegas[:,0], label='Computed', linewidth=1)
