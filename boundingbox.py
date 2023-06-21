@@ -36,8 +36,8 @@ def bbox3d(x, y, z, return_evec=False):
     means = np.mean(data, axis=1)
     cov = np.cov(data)
     #print(cov)
-    eval, evec = LA.eig(cov)
-
+    # evals, evec = LA.eig(cov)
+    evec, s, vh = LA.svd(cov)
     centered_data = data - means[:, np.newaxis]
 
     # Bounding box based on simple max min (not rotation compensated)
@@ -126,7 +126,7 @@ def bbox3d(x, y, z, return_evec=False):
 
     #ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
     if return_evec:
-        return rrc, [c_x,c_y,c_z], evec
+        return rrc, [c_x,c_y,c_z], evec.T
     else:
         return rrc, [c_x,c_y,c_z]
     

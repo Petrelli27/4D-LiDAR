@@ -106,7 +106,7 @@ def rotation_association(q_kp1, R_1):
     possible_ys = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]])
     for x_axis in possible_xs:
         for y_axis in possible_ys:
-            if (x_axis == y_axis).all():
+            if (x_axis == y_axis).all() or (np.cross(x_axis, y_axis)==0).all():
                 continue  # skip over case where x and y axis overlap
             else:
                 z_axis = np.cross(x_axis, y_axis)
