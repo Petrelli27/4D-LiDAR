@@ -282,6 +282,8 @@ for i in range(nframes):
         # 3. Kabsch
         if i==0:
             omega_los_L = np.array([0,0,0])
+            prev_box_L = associatedBbox
+            prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
         else:
             cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
             cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
