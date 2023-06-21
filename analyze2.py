@@ -170,6 +170,7 @@ nframes = len(VBs)
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 omega_0 = [0.5,0.1,1.]
+omega_true = [1., 1., 1.]
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -265,7 +266,7 @@ for i in range(nframes):
     else:
         z_q_k = rotation_association(q_kp1, R_1)
 
-    associatedBbox, L, W, H = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
+    associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
     z_p1_k = associatedBbox[:,1]
     # find angular velocity from LOS velocities
     if i > 0:
@@ -319,8 +320,8 @@ for i in range(nframes):
     ##############
 
     # allow for some time for states to settle
-    if i > 300:
-        if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.3:
+    if i > 0:
+        if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
             pass
         else:
             # Calculate the Kalman gain
@@ -341,7 +342,7 @@ for i in range(nframes):
         x_k = x_kp1.copy()
 
     # Append for analysis
-    z_s.append(z_p_k)
+    z_s.append(z_kp1)
     P_s.append(P_k)
     x_s.append(x_k)
 
@@ -349,3 +350,162 @@ for i in range(nframes):
 ##############
 # Plot relevant figures
 ##############
+#print(z_p_s)
+#print(debris_pos)
+
+z_s = np.array(z_s)
+x_s = np.array(x_s)
+
+plt.rcParams.update({'font.size': 12})
+plt.rcParams['text.usetex'] = True
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.legend()
+ax.set_xlabel('x (m)')
+ax.set_ylabel('y (m)')
+ax.set_zlabel('z (m)')
+ax.scatter(debris_pos[1,0], debris_pos[1,1], debris_pos[1,2], color='orange', marker='o', s=20)
+ax.scatter(debris_pos[-1,0], debris_pos[-1,1], debris_pos[-1,2], color='k', marker='o', s=20)
+ax.scatter(z_s[:,0], z_s[:,1], z_s[:,2], color='b', s=0.3, linewidths=0)
+ax.plot(debris_pos[:,0], debris_pos[:,1], debris_pos[:,2], color='g')
+plt.legend(['Start','End','Computed Centroid Positions', 'True Centroid Positions'])
+plt.xlim([-170.5,-167.5])
+plt.ylim([-351,-306])
+ax.set_zlim(-20,-9)
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 3], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 6], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_x$ (rad/s)')
+#plt.title('$\displaystyle\Omega_x$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,4], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,7], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_y$ (rad/s)')
+#plt.title('Omega Y')
+
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,5], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,8], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), np.ones([nframes,1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_z$ (rad/s)')
+#plt.title('Omega Z')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 6] - omega_true[0], label='Error $\displaystyle\Omega_x$', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 7] - omega_true[1], label='Error $\displaystyle\Omega_y$', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 8] - omega_true[2], label='Error $\displaystyle\Omega_z$', linewidth=2)
+# plt.plot(np.arange(0, dt*nframes, dt), np.zeros([nframes,1]), linewidth = 1) # draw line at zero
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Angular Velocity Error (rad/s)')
+#plt.title('Angular Velocity Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 0] - debris_pos[:,0], label='Error $\displaystyle p_x$', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 1] - debris_pos[:,1], label='Error $\displaystyle p_y$', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 2] - debris_pos[:,2], label='Error $\displaystyle p_x$', linewidth=2)
+
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Position Error (m)')
+#plt.title('Position Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 0], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 0], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_x$ (m)')
+#plt.title('X Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 1], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 1], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_y$ (m)')
+#plt.title('Y Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 2], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 2], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_z$ (m)')
+#plt.title('Z Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,3] - debris_vel[:,0], label='Error $\displaystyle v_{Tx}$', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,4] - debris_vel[:,1], label='Error $\displaystyle v_{Ty}$', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,5] - debris_vel[:,2], label='Error $\displaystyle v_{Tz}$', linewidth=1)
+
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Velocity Error (m/s)')
+#plt.title('Velocity Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 3], label='Estimated')
+plt.plot(np.arange(0, dt*nframes, dt), debris_vel[:, 0], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Tx}$ (m/s)')
+#plt.title('Velocity in X')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,4], label='Estimated')
+plt.plot(np.arange(0, dt*nframes, dt), debris_vel[:,1], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Ty}$ (m/s)')
+#plt.title('Velocity in y')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:,5], label='Estimated')
+plt.plot(np.arange(0, dt*nframes, dt), debris_vel[:,2], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Tz}$ (m/s)')
+#plt.title('Velocity in z')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 9], label='$\displaystyle p_{1x}$')
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 10], label='$\displaystyle p_{1y}$')
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 11], label='$\displaystyle p_{1z}$')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Vertex $\displaystyle p_{1}$ Position (m)')
+#plt.title('Position of Vertice P1 overt time')
+
+"""
+fig = plt.figure()
+true_b = []
+for i in range(nframes):
+    true_b.append(Rot_L_to_B[i] @ [1,1,1])
+true_b = np.array(true_b)
+plt.plot(np.arange(0, dt*nframes, dt), true_b[:,2], label='True')
+
+plt.plot(np.arange(0, dt*nframes, dt), omega_kabsch_b[:,2], label='Computed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Angular velocity (rad/s)')
+plt.title('$\displaystyle {}^B \Omega_z$ from Kabsch')
+"""
+
+plt.show()
