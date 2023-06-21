@@ -268,43 +268,43 @@ for i in range(nframes):
     associatedBbox, L, W, H = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
     z_p1_k = associatedBbox[:,1]
     # find angular velocity from LOS velocities
-    if i == 0:
-        z_omega_k = omega_0
-    else:
+    if i > 0:
         # 1. Linear Least Squares
         omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i]@z_p_k, Rot_L_to_B[i]@v_k, VBs[i])
         omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
-        ################################ I think to use Kabsch you need i > 0, to wait for state initializations?
-        # 2. Rotation of B Frame
-        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+    # 2. Rotation of B Frame
+    omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
 
-        # 3. Kabsch
-        if i==0:
-            omega_los_L = np.array([0,0,0])
-            prev_box_L = associatedBbox
-            prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
+    # 3. Kabsch
+    ################ to use Kabsch you need i > 0, to wait for state initializations?
+    if i==0:
+        omega_los_L = np.array([0,0,0])
+        prev_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
+    else:
+        cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
+        # rotate previous box with everything else
+        prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
+        omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+        prev_box_B = cur_box_B # for next iteration
+
+        # using moving average to smooth out omega_los_B
+        omega_kabsch_b_box[i%n_moving_average] = omega_los_B
+        if i < n_moving_average:
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
         else:
-            cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
-            cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
-            # rotate previous box with everything else
-            prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
-            omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
-            prev_box_B = cur_box_B # for next iteration
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+        omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
 
-            # using moving average to smooth out omega_los_B
-            omega_kabsch_b_box[i%n_moving_average] = omega_los_B
-            if i < n_moving_average:
-                omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i+1], axis=0)
-            else:
-                omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
-            omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
-
-        # Combine angular velocity estimates
-        if i <= settling_time:
-            z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
-        else:
-            z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
+    # Combine angular velocity estimates
+    if i == 0:
+        z_omega_k = omega_0
+    elif i <= settling_time:
+        z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
+    else:
+        z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
     #################################
 
     # Compute Measurement Vector
