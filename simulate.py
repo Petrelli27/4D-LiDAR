@@ -285,7 +285,6 @@ for i in range(nframes):
         Rot_to_B = Rot_L_to_B[i]@Rot_0
         debris.rotate_using_matrix(Rot_to_B.T) # transpose because numpy stl rotation matrix is done backwards
     else:
-        # rotation stacks upon previous rotations
         debris.rotate(Rot_L_to_B[i]@omega_L_axis,-np.linalg.norm(omega_L*dt*i))
     trans_to_B = debris_pos_B
     debris.translate(trans_to_B)

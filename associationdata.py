@@ -118,4 +118,4 @@ def rotation_association(q_kp1, R_1):
     R_index = np.argmin(np.abs(angle_diffs))
     associated_R_matrix = possible_Rs[R_index]
     associated_R = Rotation.from_matrix(associated_R_matrix)
-    return Rotation.as_quat(associated_R)
+    return Rotation.as_quat(associated_R), associated_R_matrix

@@ -5,6 +5,7 @@ from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
 
 
+
 def draw3DRectangle(ax, x1, y1, z1, x2, y2, z2):
     # the Translate the datatwo sets of coordinates form the apposite diagonal points of a cuboid
     ax.plot([x1, x2], [y1, y1], [z1, z1], color='b')  # | (up)
@@ -137,7 +138,7 @@ def associated(z_q_k, z_pi_k, z_p_k):
     R = Rotation.from_quat(z_q_k)
     R_matrix = R.as_matrix()
     centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
-    aligned_coords = R_matrix.T @ centered_coords
+    aligned_coords = R_matrix @ centered_coords
 
     xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
         aligned_coords[1, :]), np.max(aligned_coords[1, :]), np.min(aligned_coords[2, :]), np.max(aligned_coords[2, :])
@@ -147,12 +148,12 @@ def associated(z_q_k, z_pi_k, z_p_k):
                                                           [z1, z1, z1, z1, z2, z2, z2, z2]])
     
     nrc = rectCoords(xmin, ymin, zmin, xmax, ymax, zmax)  # nrc = non rotated rectangle
-    rrc = np.matmul(R_matrix, nrc)  # rrc = rotated rectangle coordinates
+    rrc = np.matmul(R_matrix.T, nrc)  # rrc = rotated rectangle coordinates
     associatedBbox = rrc + np.array(z_p_k).reshape((3,1))
     L = xmax - xmin
     W = ymax - ymin
     H = zmax - zmin
-    return associatedBbox, L, W, H
+    return associatedBbox, L, W, H, aligned_coords
 
 
 

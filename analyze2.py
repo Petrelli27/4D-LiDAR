@@ -17,6 +17,34 @@ import pickle
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
 
+def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
+    # z1 plane boundary
+    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p4[0]], [p3[1], p4[1]], [p3[2], p4[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color=color, linewidth=linewidth)
+
+    # z1 plane boundary
+    ax.plot([p5[0], p6[0]], [p5[1], p6[1]], [p5[2], p6[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p6[0], p7[0]], [p6[1], p7[1]], [p6[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p7[0], p8[0]], [p7[1], p8[1]], [p7[2], p8[2]], color=color, linewidth=linewidth)
+    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color=color, linewidth=linewidth)
+
+    # Connecting
+    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color, linewidth=linewidth)
+
+    ax.scatter(p1[0], p1[1], p1[2], color='b')
+    ax.scatter(p2[0], p2[1], p2[2], color='g')
+    ax.scatter(p3[0], p3[1], p3[2], color='r')
+    ax.scatter(p4[0], p4[1], p4[2], color='c')
+    ax.scatter(p5[0], p5[1], p5[2], color='m')
+    ax.scatter(p6[0], p6[1], p6[2], color='y')
+    ax.scatter(p7[0], p7[1], p7[2], color='k')
+    ax.scatter(p8[0], p8[1], p8[2], color='b')
+
 def skew(vector):
     vector = list(vector)
     return np.array([[0, -vector[2], vector[1]],
@@ -135,6 +163,22 @@ def F_matrix(dt, R, x_k):
 
     return F
 
+def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
+
+    Rot_0 = Rotation.from_quat(q_ini)
+    Rot_0 = np.eye(3)
+    print(Rot_0)
+    q_s = []
+    for i in range(len(debris_pos)):
+
+        # get rotation matrix for that timestep
+        Rot_i = rodrigues(omega_true, dt * i)
+        associated_R = Rotation.from_matrix(Rot_i @ Rot_0)
+        q_i = Rotation.as_quat(associated_R)
+        q_s.append(q_i)
+
+    return q_s
+
 # initialize debris position, velocity and orientation
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
@@ -152,6 +196,7 @@ Rot_L_to_B = data[7]
 Rot_B_to_L = [np.transpose(r) for r in Rot_L_to_B]
 omega_L = data[8]
 dt = data[9]
+
 
 # Estimation Loop
 XLs = []  # store point cloud x in L
@@ -171,6 +216,8 @@ nframes = len(VBs)
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 omega_0 = [0.5,0.1,-0.5]
 omega_true = [1., 1., 1.]
+q_ini = [1., 0., 0., 0.]
+q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -263,11 +310,74 @@ for i in range(nframes):
     # R_1 is obtained from bounding box
     if i == 0:
         z_q_k = Rotation.as_quat(Rotation.from_matrix(R_1))
+        associated_R = np.eye(3)
     else:
-        z_q_k = rotation_association(q_kp1, R_1)
+        z_q_k, associated_R = rotation_association(q_kp1, R_1)
 
-    associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k)
-    z_p1_k = associatedBbox[:,1]
+    associatedBbox, L, W, D, aligned = boundingbox.associated(z_q_k, z_pi_k, z_p_k)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+
+    if i>0 and i%10 == 0:
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        # ax.legend()
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
+        ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+        # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
+        ax.set_aspect('equal', 'box')
+        # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
+        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+                      associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
+        drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+                      z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+
+        Rot_0 = Rotation.from_quat(z_q_k)
+        Rot_0 = Rotation.as_matrix(Rot_0)
+        R_12 = Rotation.from_quat(q_kp1)
+        R_1 = Rotation.as_matrix(R_12)
+        R_13 = Rotation.from_quat(q_true[i, :])
+        R_14 = Rotation.as_matrix(R_13)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 0]], [z_p_k[1], z_p_k[1] + Rot_0[1, 0]], [z_p_k[2], z_p_k[2] + Rot_0[2, 0]],
+        color='b', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 1]], [z_p_k[1], z_p_k[1] + Rot_0[1, 1]], [z_p_k[2], z_p_k[2] + Rot_0[2, 1]],
+        color='b', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 2]], [z_p_k[1], z_p_k[1] + Rot_0[1, 2]], [z_p_k[2], z_p_k[2] + Rot_0[2, 2]],
+        color='b', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 0]], [z_p_k[1], z_p_k[1] + R_1[1, 0]],
+                [z_p_k[2], z_p_k[2] + R_1[2, 0]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 1]], [z_p_k[1], z_p_k[1] + R_1[1, 1]],
+                [z_p_k[2], z_p_k[2] + R_1[2, 1]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 2]], [z_p_k[1], z_p_k[1] + R_1[1, 2]],
+                [z_p_k[2], z_p_k[2] + R_1[2, 2]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 0]], [z_p_k[1], z_p_k[1] + R_14[1, 0]],
+                [z_p_k[2], z_p_k[2] + R_14[2, 0]],
+                color='green', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 1]], [z_p_k[1], z_p_k[1] + R_14[1, 1]],
+                [z_p_k[2], z_p_k[2] + R_14[2, 1]],
+                color='green', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 2]], [z_p_k[1], z_p_k[1] + R_14[1, 2]],
+                [z_p_k[2], z_p_k[2] + R_14[2, 2]],
+                color='green', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+                [z_p_k[2], z_p_k[2] + 1],
+                color='black', linewidth=4)
+
+
+
+        plt.show()
+
+        # ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
+        # ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
+        # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')
+
+
+
     # find angular velocity from LOS velocities
     if i > 0:
         # 1. Linear Least Squares
@@ -353,6 +463,8 @@ for i in range(nframes):
     x_s.append(x_k)
 
 
+
+
 ##############
 # Plot relevant figures
 ##############
@@ -361,6 +473,7 @@ for i in range(nframes):
 
 z_s = np.array(z_s)
 x_s = np.array(x_s)
+q_true = np.array(q_true)
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
@@ -498,6 +611,42 @@ plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Vertex $\displaystyle p_{1}$ Position (m)')
 #plt.title('Position of Vertice P1 overt time')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:,0], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_0$')
+#plt.title('Orientation $\displaystyle q_0$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 11], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:,1], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_1$')
+#plt.title('Orientation $\displaystyle q_1$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:,2], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_2$')
+#plt.title('Orientation $\displaystyle q_2$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:,3], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_3$')
+#plt.title('Orientation $\displaystyle q_3$')
 
 """
 fig = plt.figure()
