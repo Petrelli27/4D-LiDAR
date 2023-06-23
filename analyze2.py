@@ -169,7 +169,7 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [0.5,0.1,1.]
+omega_0 = [0.5,0.1,-0.5]
 omega_true = [1., 1., 1.]
 
 # Initial covariance
@@ -177,18 +177,18 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
 P_k = P_0.copy()  # covariance matrix
 
 # Process noise covariance matrix
-qp = 0.000025
+qp = 0.0000025
 qv = 0.0000005
-qom = 0.00005
-qp1 = 0.00005
-qq = 0.0005
+qom = 0.0005
+qp1 = 0.000005
+qq = 0.00005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 500
-om = 0.25
-p1 = 0.05
-q = 0.01
+p = 0.0055
+om = 0.025
+p1 = 0.005
+q = 0.001
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
 # Measurement matrix
@@ -197,8 +197,8 @@ H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
 # Kabsch estimation parameters
-n_moving_average = 100
-settling_time = 500
+n_moving_average = 5
+settling_time = 50
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -287,7 +287,7 @@ for i in range(nframes):
         cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
         cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
         # rotate previous box with everything else
-        prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
+        # prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
         omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
         prev_box_B = cur_box_B # for next iteration
 
@@ -321,8 +321,10 @@ for i in range(nframes):
 
     # allow for some time for states to settle
     if i > 0:
-        if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
+        if False:
             pass
+        # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
+        #     pass
         else:
             # Calculate the Kalman gain
             K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
@@ -335,6 +337,10 @@ for i in range(nframes):
 
             # Update Covariance
             P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
+
+            # for debugging purposes
+            if (np.isnan(P_kp1)).any():
+                print('something went wrong')
 
     # Transfer states and covariance from kp1 to k
     if i>0:
