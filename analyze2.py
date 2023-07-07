@@ -183,6 +183,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
+#with open('sim_kompsat670.pickle', 'rb') as sim_data:
 with open('sim_kompsat670.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
@@ -190,6 +191,7 @@ YBs = data[1]
 ZBs = data[2]
 PBs = data[3]
 VBs = data[4]
+
 debris_pos = data[5]
 debris_vel = data[6]
 Rot_L_to_B = data[7]
@@ -317,7 +319,7 @@ for i in range(nframes):
     associatedBbox, L, W, D, aligned = boundingbox.associated(z_q_k, z_pi_k, z_p_k)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    if i>0 and i%10 == 0:
+    if True:#i>0 and i%1 == 0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -325,48 +327,107 @@ for i in range(nframes):
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_zlabel('z')
-        ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+        # ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
-        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
-                      associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
-        drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
-                      z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+        # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+        #               associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
+        # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+        #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
 
-        Rot_0 = Rotation.from_quat(z_q_k)
-        Rot_0 = Rotation.as_matrix(Rot_0)
-        R_12 = Rotation.from_quat(q_kp1)
-        R_1 = Rotation.as_matrix(R_12)
-        R_13 = Rotation.from_quat(q_true[i, :])
-        R_14 = Rotation.as_matrix(R_13)
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 0]], [z_p_k[1], z_p_k[1] + Rot_0[1, 0]], [z_p_k[2], z_p_k[2] + Rot_0[2, 0]],
-        color='b', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 1]], [z_p_k[1], z_p_k[1] + Rot_0[1, 1]], [z_p_k[2], z_p_k[2] + Rot_0[2, 1]],
-        color='b', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_0[0, 2]], [z_p_k[1], z_p_k[1] + Rot_0[1, 2]], [z_p_k[2], z_p_k[2] + Rot_0[2, 2]],
-        color='b', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 0]], [z_p_k[1], z_p_k[1] + R_1[1, 0]],
-                [z_p_k[2], z_p_k[2] + R_1[2, 0]],
-                color='orange', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 1]], [z_p_k[1], z_p_k[1] + R_1[1, 1]],
-                [z_p_k[2], z_p_k[2] + R_1[2, 1]],
-                color='orange', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 2]], [z_p_k[1], z_p_k[1] + R_1[1, 2]],
-                [z_p_k[2], z_p_k[2] + R_1[2, 2]],
-                color='orange', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 0]], [z_p_k[1], z_p_k[1] + R_14[1, 0]],
-                [z_p_k[2], z_p_k[2] + R_14[2, 0]],
-                color='green', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 1]], [z_p_k[1], z_p_k[1] + R_14[1, 1]],
-                [z_p_k[2], z_p_k[2] + R_14[2, 1]],
-                color='green', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_14[0, 2]], [z_p_k[1], z_p_k[1] + R_14[1, 2]],
-                [z_p_k[2], z_p_k[2] + R_14[2, 2]],
-                color='green', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
-                [z_p_k[2], z_p_k[2] + 1],
-                color='black', linewidth=4)
+        Rot_measured = Rotation.from_quat(z_q_k)
+        Rot_measured = Rotation.as_matrix(Rot_measured)
+
+        print(Rot_measured)
+        print(associated_R)
+
+        # R_estimated = Rotation.from_quat(q_kp1)
+        # R_estimated = Rotation.as_matrix(R_estimated)
+
+        R_true = Rotation.from_quat(q_true[i, :])
+        R_true = Rotation.as_matrix(R_true)
+
+
+        # plot measured
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
+        # color='b', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
+        # color='b', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
+        # color='b', linewidth=4)
+
+        # plot current estimate of ekf
+        # ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 0]], [z_p_k[1], z_p_k[1] + R_1[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + R_1[2, 0]],
+        #         color='orange', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 1]], [z_p_k[1], z_p_k[1] + R_1[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + R_1[2, 1]],
+        #         color='orange', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_1[0, 2]], [z_p_k[1], z_p_k[1] + R_1[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + R_1[2, 2]],
+        #         color='orange', linewidth=4)
+
+        # plot true
+        # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + R_true[2, 0]],
+        #         color='green', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + R_true[2, 1]],
+        #         color='green', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + R_true[2, 2]],
+        #         color='green', linewidth=4)
+
+        # plot b_frame
+        print(Rot_B_to_L[i])
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                [0., 0. + Rot_B_to_L[i][2, 0]],
+                color='r', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                [0., 0. + Rot_B_to_L[i][2, 1]],
+                color='g', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                [0., 0. + Rot_B_to_L[i][2, 2]],
+                color='b', linewidth=1)
+        i = i+100
+        print(Rot_B_to_L[i])
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                [0., 0. + Rot_B_to_L[i][2, 0]],
+                color='r', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                [0., 0. + Rot_B_to_L[i][2, 1]],
+                color='g', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                [0., 0. + Rot_B_to_L[i][2, 2]],
+                color='b', linewidth=1)
+        i=i+200
+        print(Rot_B_to_L[i])
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                [0., 0. + Rot_B_to_L[i][2, 0]],
+                color='r', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                [0., 0. + Rot_B_to_L[i][2, 1]],
+                color='g', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                [0., 0. + Rot_B_to_L[i][2, 2]],
+                color='b', linewidth=1)
+        i=i+300
+        print(Rot_B_to_L[i])
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                [0., 0. + Rot_B_to_L[i][2, 0]],
+                color='r', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                [0., 0. + Rot_B_to_L[i][2, 1]],
+                color='g', linewidth=1)
+        ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                [0., 0. + Rot_B_to_L[i][2, 2]],
+                color='b', linewidth=1)
+
+        # black is axis of rotation
+        # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+        #         [z_p_k[2], z_p_k[2] + 1],
+        #         color='black', linewidth=4)
 
 
 

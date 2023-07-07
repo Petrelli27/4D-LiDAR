@@ -126,8 +126,9 @@ def bbox3d(x, y, z, return_evec=False):
     c_z = sum(rrc[2,:])/len(rrc[2,:])
 
     #ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
+    # evec is aligned with the point cloud and bbox
     if return_evec:
-        return rrc, [c_x,c_y,c_z], evec.T
+        return rrc, [c_x,c_y,c_z], evec
     else:
         return rrc, [c_x,c_y,c_z]
     
