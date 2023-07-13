@@ -54,7 +54,6 @@ dt = 0.05
 x, y, z, vx, vy, vz, d, v = dynamics.propagate(dt, nframes, r0, rdot0, omeg)
 debris_pos = np.vstack([x,y,z]).T
 debris_vel = np.vstack([vx,vy,vz]).T
-print(d)
 # specify Lidar resolution and range
 # LiDAR point cloud generation initializations
 ang_res = 0.025  # angular resolution of Aeries 2 LiDAR
@@ -68,6 +67,12 @@ res_box = 5.5
 # generate debris mesh (we only want to do this once to improve compute efficiency)
 debris_file = 'kompsat-1-v9.stl'
 
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+# ax.legend()
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+ax.set_zlabel('z')
 
 # Simulation Loop
 XBs = []
@@ -117,7 +122,9 @@ for i in range(nframes):
         Rot_to_B = Rot_L_to_B[i]@Rot_0
         debris.rotate_using_matrix(Rot_to_B.T) # transpose because numpy stl rotation matrix is done backwards
     else:
+        debris.rotate_using_matrix(Rot_L_to_B[i].T)
         debris.rotate(Rot_L_to_B[i]@omega_L_axis,-np.linalg.norm(omega_L*dt*i))
+
     trans_to_B = debris_pos_B
     debris.translate(trans_to_B)
     # do lidarScan in {B}
@@ -132,7 +139,21 @@ for i in range(nframes):
     PBs.append(np.vstack([X,Y,Z]).T)
     VBs.append(V_los)
     # remember, LOS velocities do not care about rotation speed
-    
+
+
+    # X_L, Y_L, Z_L = Rot_L_to_B[i].T @ np.array([X, Y, Z])
+    # ax.scatter(X_L, Y_L, Z_L, marker='o', s=10, label=str(i))
+    #
+    # debris_pos_i = debris_pos[i]
+    #
+    # if i >3:
+    #
+    #     ax.plot([debris_pos_i[0], debris_pos_i[0] + 1], [debris_pos_i[1], debris_pos_i[1] + 0],
+    #         [debris_pos_i[2], debris_pos_i[2] + 0],
+    #         color='black', linewidth=4)
+    #     ax.legend()
+    #     plt.show()
+
     # undo the translation since we have debris positions in {L}
     # if i+1 < nframes:
     #     debris.translate(-trans_to_B)

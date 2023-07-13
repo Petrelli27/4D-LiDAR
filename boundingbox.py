@@ -132,29 +132,51 @@ def bbox3d(x, y, z, return_evec=False):
     else:
         return rrc, [c_x,c_y,c_z]
     
-def associated(z_q_k, z_pi_k, z_p_k):  
+def associated(z_q_k, z_pi_k, z_p_k, R_1):
+
     # rotate z_pi_k by R_1
     # find xmin ymin zmin
     # this is z_p1_k
     R = Rotation.from_quat(z_q_k)
     R_matrix = R.as_matrix()
     centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
-    aligned_coords = R_matrix @ centered_coords
+    aligned_coords = R_matrix.T @ centered_coords
 
-    xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
-        aligned_coords[1, :]), np.max(aligned_coords[1, :]), np.min(aligned_coords[2, :]), np.max(aligned_coords[2, :])
-    
-    rectCoords = lambda x1, y1, z1, x2, y2, z2: np.array([[x1, x1, x2, x2, x1, x1, x2, x2],
-                                                          [y1, y2, y2, y1, y1, y2, y2, y1],
-                                                          [z1, z1, z1, z1, z2, z2, z2, z2]])
-    
-    nrc = rectCoords(xmin, ymin, zmin, xmax, ymax, zmax)  # nrc = non rotated rectangle
-    rrc = np.matmul(R_matrix.T, nrc)  # rrc = rotated rectangle coordinates
-    associatedBbox = rrc + np.array(z_p_k).reshape((3,1))
+    for i, point in enumerate(aligned_coords.T):
+
+        x, y, z = point
+        if x < 0 and y < 0 and z < 0:
+            z_p1_k = z_pi_k[:, i]
+        elif x < 0 and y > 0 and z < 0:
+            z_p2_k = z_pi_k[:, i]
+        elif x > 0 and y > 0  and z < 0:
+            z_p3_k = z_pi_k[:, i]
+        elif x > 0 and y < 0 and z < 0:
+            z_p4_k = z_pi_k[:, i]
+        elif x < 0 and y < 0 and z > 0:
+            z_p5_k = z_pi_k[:, i]
+        elif x < 0 and y > 0 and z > 0:
+            z_p6_k = z_pi_k[:, i]
+        elif x > 0 and y > 0 and z > 0:
+            z_p7_k = z_pi_k[:, i]
+        else:
+            z_p8_k = z_pi_k[:, i]
+
+    aligned_coords_final = np.array([z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).T
+
+    xmax = max(aligned_coords_final[0, :])
+    xmin = min(aligned_coords_final[0, :])
+    ymax = max(aligned_coords_final[1, :])
+    ymin = min(aligned_coords_final[1, :])
+    zmax = max(aligned_coords_final[2, :])
+    zmin = min(aligned_coords_final[2, :])
     L = xmax - xmin
     W = ymax - ymin
     H = zmax - zmin
-    return associatedBbox, L, W, H, aligned_coords
+
+    associatedBbox = aligned_coords_final + np.array(z_p_k).reshape((3, 1))
+
+    return z_pi_k.copy(), L, W, H
 
 
 
