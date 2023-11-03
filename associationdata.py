@@ -1,5 +1,6 @@
 import numpy as np
 from math import trunc
+from mytools import *
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
 
@@ -98,8 +99,7 @@ def mahalonobis_association(pi_k, z_pi_k, z_c_k):
 def rotation_association(q_kp1, R_1):
     # Orientation association
     # R_1 is obtained from bounding box
-    predicted_R = Rotation.from_quat(q_kp1)
-    predicted_R_matrix = predicted_R.as_matrix()
+    predicted_R = quat2rotm(q_kp1)
     possible_Rs = []
     angle_diffs = []
     possible_xs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]])
@@ -112,10 +112,9 @@ def rotation_association(q_kp1, R_1):
                 z_axis = np.cross(x_axis, y_axis)
                 possible_R = R_1 @  np.array([x_axis, y_axis, z_axis])
                 possible_Rs.append(possible_R)
-                rotation_diff = (predicted_R_matrix.T) @ (possible_R)
+                rotation_diff = (predicted_R.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
     R_index = np.argmin(np.abs(angle_diffs))
-    associated_R_matrix = possible_Rs[R_index]
-    associated_R = Rotation.from_matrix(associated_R_matrix)
-    return Rotation.as_quat(associated_R), associated_R_matrix
+    associated_R = possible_Rs[R_index] # already pre-multiplied by R_1
+    return rotm2quat(associated_R)

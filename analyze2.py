@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import linalg
-import math
+from mytools import *
 import lidarScan2
 import boundingbox
 from stl import mesh
@@ -69,23 +69,6 @@ def rodrigues(omega, dt):
     R = ee_t + (np.eye(len(e_omega)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
     return R
 
-def rotm2quat(R):
-    qw = 0.5*math.sqrt(1+R[1,1]+R[2,2]+R[3,3])
-    qx = (R[2,1]-R[1,2])/(4*qw)
-    qy = (R[0,2]-R[2,0])/(4*qw)
-    qz = (R[1,0]-R[0,1])/(4*qw)
-    return np.array([qw,qx,qy,qz])
-
-def quat2rotm(q):
-    qw = q[1]
-    qx = q[2]
-    qy = q[3]
-    qz = q[4]
-    R = np.array([[2*(qw**2+qx**2)-1, 2*(qx*qy-qw*qz), 2*(qx*qz+qw*qy)],
-                  [2*(qx*qy+qw*qz), 2*(qw**2+qy**2)-1, 2*(qy*qz - qw*qx)],
-                  [2*(qx*qz-qw*qy), 2*(qy*qz+qw*qx), 2*(qw**2+qz**2)-1]])
-    return R
-
 def verticeupdate(dt, x_k):
 
     # Decompose the state vector
@@ -111,9 +94,10 @@ def verticeupdate(dt, x_k):
 def orientationupdate(dt, x_k):
 
     # Decompose the state vector
-    omega_k = x_k[6:9]
+    omega_k_L = x_k[6:9]
     q_k = x_k[12:16]
     R_k = quat2rotm(q_k)
+    omega_k = R_k @ omega_k_L
 
     hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
                 omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
@@ -184,7 +168,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
     Rot_0 = quat2rotm(q_ini)
     # Rot_0 = np.eye(3)
-    print(Rot_0)
+    # print(Rot_0)
     q_s = []
     for i in range(len(debris_pos)):
 
@@ -263,8 +247,8 @@ H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
 # Kabsch estimation parameters
-n_moving_average = 5
-settling_time = 50
+n_moving_average = 100
+settling_time = 600
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -328,15 +312,16 @@ for i in range(nframes):
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
-        z_q_k = rotm2quat(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) @ R_1)  # this rotation is to set initial orientation to match with true
-        associated_R =  np.eye(3)
+        # z_q_k = rotm2quat(R_1)
+        z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]]))  # this rotation is to set initial orientation to match with true
+        
     else:
-        z_q_k, associated_R = rotation_association(q_kp1, R_1)
+        z_q_k = rotation_association(q_kp1, R_1)
 
     associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    if i>0 and i%500 == 0:
+    if i>550 and i%2 == 1:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -367,33 +352,33 @@ for i in range(nframes):
 
         # plot measured
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
-        color='blue', linewidth=4)
+        color='blue', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
-        color='blue', linewidth=4)
+        color='blue', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
-        color='b', linewidth=4)
+        color='b', linewidth=5)
 
         # plot current estimate of ekf
         ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
                 [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
-                color='orange', linewidth=4)
+                color='orange', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
                 [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
-                color='orange', linewidth=4)
+                color='orange', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
                 [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
-                color='orange', linewidth=4)
+                color='orange', linewidth=5)
 
         # plot true
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
                 [z_p_k[2], z_p_k[2] + R_true[2, 0]],
-                color='green', linewidth=4)
+                color='green', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
                 [z_p_k[2], z_p_k[2] + R_true[2, 1]],
-                color='green', linewidth=4)
+                color='green', linewidth=3)
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
                 [z_p_k[2], z_p_k[2] + R_true[2, 2]],
-                color='green', linewidth=4)
+                color='green', linewidth=5)
 
         # plot b_frame
         # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
@@ -406,7 +391,7 @@ for i in range(nframes):
         #         [0., 0. + Rot_B_to_L[i][2, 2]],
         #         color='b', linewidth=1)
 
-        # black is axis of rotation
+        # black is axis of rotation, which we have set to be [1 1 1]
         ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
                 [z_p_k[2], z_p_k[2] + 1],
                 color='black', linewidth=4)
@@ -490,6 +475,10 @@ for i in range(nframes):
 
             # Update Covariance
             P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
+
+            # Keep unit quaternions unit
+            q_magnitude = np.sqrt(x_kp1[12]**2 + x_kp1[13]**2 + x_kp1[14]**2 + x_kp1[15]**2)
+            x_kp1[12:] /= q_magnitude
 
             # for debugging purposes
             if (np.isnan(P_kp1)).any():
@@ -666,7 +655,7 @@ plt.ylabel('$\displaystyle q_0$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 11], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:,1], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
@@ -675,7 +664,7 @@ plt.ylabel('$\displaystyle q_1$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:,2], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
@@ -684,7 +673,7 @@ plt.ylabel('$\displaystyle q_2$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:,3], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
