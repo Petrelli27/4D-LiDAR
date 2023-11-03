@@ -3,7 +3,6 @@ import dynamics
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial.transform import Rotation
 from scipy import linalg
 import math
 import lidarScan2
@@ -70,6 +69,23 @@ def rodrigues(omega, dt):
     R = ee_t + (np.eye(len(e_omega)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
     return R
 
+def rotm2quat(R):
+    qw = 0.5*math.sqrt(1+R[1,1]+R[2,2]+R[3,3])
+    qx = (R[2,1]-R[1,2])/(4*qw)
+    qy = (R[0,2]-R[2,0])/(4*qw)
+    qz = (R[1,0]-R[0,1])/(4*qw)
+    return np.array([qw,qx,qy,qz])
+
+def quat2rotm(q):
+    qw = q[1]
+    qx = q[2]
+    qy = q[3]
+    qz = q[4]
+    R = np.array([[2*(qw**2+qx**2)-1, 2*(qx*qy-qw*qz), 2*(qx*qz+qw*qy)],
+                  [2*(qx*qy+qw*qz), 2*(qw**2+qy**2)-1, 2*(qy*qz - qw*qx)],
+                  [2*(qx*qz-qw*qy), 2*(qy*qz+qw*qx), 2*(qw**2+qz**2)-1]])
+    return R
+
 def verticeupdate(dt, x_k):
 
     # Decompose the state vector
@@ -97,6 +113,7 @@ def orientationupdate(dt, x_k):
     # Decompose the state vector
     omega_k = x_k[6:9]
     q_k = x_k[12:16]
+    R_k = quat2rotm(q_k)
 
     hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
                 omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
@@ -165,16 +182,16 @@ def F_matrix(dt, R, x_k):
 
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
-    Rot_0 = Rotation.from_quat(q_ini)
-    Rot_0 = np.eye(3)
+    Rot_0 = quat2rotm(q_ini)
+    # Rot_0 = np.eye(3)
     print(Rot_0)
     q_s = []
     for i in range(len(debris_pos)):
 
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
-        associated_R = Rotation.from_matrix(Rot_i @ Rot_0)
-        q_i = Rotation.as_quat(associated_R)
+        associated_R = Rot_i @ Rot_0
+        q_i = rotm2quat(associated_R)
         q_s.append(q_i)
 
     return q_s
@@ -184,7 +201,7 @@ O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
 #with open('sim_kompsat670.pickle', 'rb') as sim_data:
-with open('sim_kompsat_neg_om.pickle', 'rb') as sim_data:
+with open('sim_kompsat_orient_fixed_long', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -311,7 +328,7 @@ for i in range(nframes):
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
-        z_q_k = Rotation.as_quat(Rotation.from_matrix(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) @ R_1))  # this rotation is to set initial orientation to match with true
+        z_q_k = rotm2quat(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) @ R_1)  # this rotation is to set initial orientation to match with true
         associated_R =  np.eye(3)
     else:
         z_q_k, associated_R = rotation_association(q_kp1, R_1)
@@ -319,7 +336,7 @@ for i in range(nframes):
     associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    if i>0 and i%10 == 0:
+    if i>0 and i%500 == 0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -330,7 +347,7 @@ for i in range(nframes):
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
-        # L, W, H = Rotation.as_matrix(Rotation.from_quat(q_kp1)).T @ (p1_kp1 - p_k)
+        # L, W, H = quat2rotm(q_kp1).T @ (p1_kp1 - p_k)
 
 
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
@@ -341,14 +358,11 @@ for i in range(nframes):
                       z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
         ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=10)
 
-        Rot_measured = Rotation.from_quat(z_q_k)
-        Rot_measured = Rotation.as_matrix(Rot_measured)
+        Rot_measured = quat2rotm(z_q_k)
 
-        R_estimated = Rotation.from_quat(q_kp1)
-        R_estimated = Rotation.as_matrix(R_estimated)
+        R_estimated = quat2rotm(q_kp1)
 
-        R_true = Rotation.from_quat(q_true[i, :])
-        R_true = Rotation.as_matrix(R_true)
+        R_true = quat2rotm(q_true[i, :])
 
 
         # plot measured
