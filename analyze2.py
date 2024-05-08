@@ -166,7 +166,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
     Rot_0 = quat2rotm(q_ini)
     Rot_0 = np.eye(3)
-    print(Rot_0)
+    # print(Rot_0)
     q_s = []
     for i in range(len(debris_pos)):
 
@@ -181,8 +181,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_kompsat_neg_om.pickle', 'rb') as sim_data:
-# with open('sim_new_conditions.pickle', 'rb') as sim_data:
+# with open('sim_kompsat_neg_om.pickle', 'rb') as sim_data:
+with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -233,9 +233,9 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 
 # Measurement noise covariance matrix
 p = 0.0055
-om = 0.025
+om = 0.0025
 p1 = 0.005
-q = 1
+q = 0.00004
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
 # Measurement matrix
@@ -462,7 +462,7 @@ for i in range(nframes):
     # Update - Combine Measurement and Estimates
     ##############
 
-    # allow for some time for states to settle
+    # allow for some time for states to setftle
     if i > 0:
         if False:
             pass
