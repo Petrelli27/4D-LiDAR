@@ -65,12 +65,12 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
         ec_dist = np.sqrt(sum((i - j) ** 2 for i, j in zip(z_pi_k.T, pi_k_i)))
         ec_dists[i, :] = ec_dist
 
-    print(ec_dists)
-    print("Hello")
+    # print(ec_dists)
+    # print("Hello")
     for i, ec_dist in enumerate(ec_dists):
         #print(ec_dists)
         all_idx = np.argmin(ec_dists)
-        print(all_idx)
+        # print(all_idx)
         pi_idx = trunc(all_idx/8)
         z_idx = all_idx % 8
         #print(z_idx)
