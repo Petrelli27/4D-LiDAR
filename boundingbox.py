@@ -1,3 +1,4 @@
+from mytools import *
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
@@ -134,33 +135,34 @@ def bbox3d(x, y, z, return_evec=False):
     
 def associated(z_q_k, z_pi_k, z_p_k, R_1):
 
-    # rotate z_pi_k by R_1
+    # rotate z_pi_k by R (after bbox association)
     # find xmin ymin zmin
     # this is z_p1_k
-    R = Rotation.from_quat(z_q_k)
-    R_matrix = R.as_matrix()
+    R = quat2rotm(z_q_k)
     centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
-    aligned_coords = R_matrix.T @ centered_coords
+    aligned_coords = R.T @ centered_coords
 
     for i, point in enumerate(aligned_coords.T):
 
+
         x, y, z = point
         if x < 0 and y < 0 and z < 0:
-            z_p1_k = z_pi_k[:, i]
+            z_p1_k = point
         elif x < 0 and y > 0 and z < 0:
-            z_p2_k = z_pi_k[:, i]
+            z_p2_k = point
         elif x > 0 and y > 0  and z < 0:
-            z_p3_k = z_pi_k[:, i]
+            z_p3_k = point
         elif x > 0 and y < 0 and z < 0:
-            z_p4_k = z_pi_k[:, i]
+            z_p4_k = point
         elif x < 0 and y < 0 and z > 0:
-            z_p5_k = z_pi_k[:, i]
+            z_p5_k = point
         elif x < 0 and y > 0 and z > 0:
-            z_p6_k = z_pi_k[:, i]
+            z_p6_k = point
         elif x > 0 and y > 0 and z > 0:
-            z_p7_k = z_pi_k[:, i]
+            z_p7_k = point
         else:
-            z_p8_k = z_pi_k[:, i]
+            z_p8_k = point
+
 
     aligned_coords_final = np.array([z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).T
 
@@ -174,9 +176,9 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
     W = ymax - ymin
     H = zmax - zmin
 
-    associatedBbox = aligned_coords_final + np.array(z_p_k).reshape((3, 1))
+    associatedBbox = R@aligned_coords_final + np.array(z_p_k).reshape((3, 1))
 
-    return z_pi_k.copy(), L, W, H
+    return associatedBbox, L, W, H
 
 
 

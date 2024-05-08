@@ -236,7 +236,7 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 # Measurement noise covariance matrix
 p = 0.0055
 om = 0.025
-p1 = 0.00005
+p1 = 0.005
 q = 0.001
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
@@ -312,7 +312,7 @@ for i in range(nframes):
     # R_1 is obtained from bounding box
     if i == 0:
         z_q_k = Rotation.as_quat(Rotation.from_matrix(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) @ R_1))  # this rotation is to set initial orientation to match with true
-        associated_R =  np.eye(3)
+        associated_R = np.eye(3)
     else:
         z_q_k, associated_R = rotation_association(q_kp1, R_1)
 
@@ -330,16 +330,25 @@ for i in range(nframes):
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
-        # L, W, H = Rotation.as_matrix(Rotation.from_quat(q_kp1)).T @ (p1_kp1 - p_k)
+        # L, W, D = abs(Rotation.as_matrix(Rotation.from_quat(q_kp1)).T @ (p1_kp1 - p_k))
+        # p2_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @ np.array([-L, W, -D]) + p_k
+        # p3_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, W, -D]) + p_k
+        # p4_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, -W, -D]) + p_k
+        # p5_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([-L, -W, D]) + p_k
+        # p6_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([-L, W, D]) + p_k
+        # p7_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, W, D]) + p_k
+        # p8_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, -W, D]) + p_k
+        # print(p1_kp1)
+        # print(p7_kp1)
+        # print(L, W, D)
 
 
-        # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
-        associatedBbox += 0.4
+        # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
         drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
                       associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
-        drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
-                      z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
-        ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=10)
+        # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+        #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+        # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
 
         Rot_measured = Rotation.from_quat(z_q_k)
         Rot_measured = Rotation.as_matrix(Rot_measured)
@@ -644,7 +653,7 @@ plt.ylabel('Vertex $\displaystyle p_{1}$ Position (m)')
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), q_true[:,0], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:, 0], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_0$')
@@ -652,7 +661,7 @@ plt.ylabel('$\displaystyle q_0$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 11], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:,1], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
@@ -661,8 +670,8 @@ plt.ylabel('$\displaystyle q_1$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), q_true[:,2], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:, 2], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_2$')
@@ -670,8 +679,8 @@ plt.ylabel('$\displaystyle q_2$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), q_true[:,3], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), q_true[:, 3], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
