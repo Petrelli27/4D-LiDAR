@@ -144,6 +144,7 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
 
     for i, point in enumerate(aligned_coords.T):
 
+
         x, y, z = point
         if x < 0 and y < 0 and z < 0:
             z_p1_k = z_pi_k[:, i]
@@ -161,6 +162,7 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
             z_p7_k = z_pi_k[:, i]
         else:
             z_p8_k = z_pi_k[:, i]
+
 
     aligned_coords_final = np.array([z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).T
 
