@@ -18,3 +18,8 @@ def quat2rotm(q):
                   [2*(qx*qy+qw*qz), 2*(qw**2+qy**2)-1, 2*(qy*qz - qw*qx)],
                   [2*(qx*qz-qw*qy), 2*(qy*qz+qw*qx), 2*(qw**2+qz**2)-1]])
     return R
+
+def normalize_quat(q):
+    q_norm = np.linalg.norm(q)
+    q_unit = q/q_norm
+    return q_unit

@@ -110,11 +110,11 @@ def rotation_association(q_kp1, R_1):
                 continue  # skip over case where x and y axis overlap
             else:
                 z_axis = np.cross(x_axis, y_axis)
-                possible_R = R_1 @  np.array([x_axis, y_axis, z_axis])
+                possible_R = R_1@np.array([x_axis, y_axis, z_axis])
                 possible_Rs.append(possible_R)
                 rotation_diff = (predicted_R.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
     R_index = np.argmin(np.abs(angle_diffs))
     associated_R = possible_Rs[R_index] # already pre-multiplied by R_1
-    return rotm2quat(associated_R)
+    return (rotm2quat(associated_R))

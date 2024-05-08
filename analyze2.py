@@ -3,8 +3,6 @@ import dynamics
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial.transform import Rotation
-from scipy import linalg
 import math
 import lidarScan2
 import boundingbox
@@ -12,6 +10,7 @@ from stl import mesh
 from estimateOmega import estimate_LLS, estimate_kabsch, estimate_rotation_B
 from associationdata import nearest_search
 from associationdata import rotation_association
+from mytools import *
 import pickle
 
 from mpl_toolkits import mplot3d
@@ -103,7 +102,7 @@ def orientationupdate(dt, x_k):
                 omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
                 omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]])
     
-    return 0.5 * dt * hamilton + q_k
+    return normalize_quat(0.5 * dt * hamilton + q_k)
 
 def F_matrix(dt, R, x_k):
     """
@@ -165,7 +164,7 @@ def F_matrix(dt, R, x_k):
 
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
-    Rot_0 = Rotation.from_quat(q_ini)
+    Rot_0 = quat2rotm(q_ini)
     Rot_0 = np.eye(3)
     print(Rot_0)
     q_s = []
@@ -173,8 +172,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
-        associated_R = Rotation.from_matrix(Rot_i @ Rot_0)
-        q_i = Rotation.as_quat(associated_R)
+        q_i = rotm2quat(Rot_i @ Rot_0)
         q_s.append(q_i)
 
     return q_s
@@ -183,8 +181,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-#with open('sim_kompsat670.pickle', 'rb') as sim_data:
 with open('sim_kompsat_neg_om.pickle', 'rb') as sim_data:
+# with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -228,7 +226,7 @@ P_k = P_0.copy()  # covariance matrix
 # Process noise covariance matrix
 qp = 0.0000025
 qv = 0.0000005
-qom = 0.0005
+qom = 0.00005
 qp1 = 0.000005
 qq = 0.00005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
@@ -237,7 +235,7 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 p = 0.0055
 om = 0.025
 p1 = 0.005
-q = 0.001
+q = 1
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
 # Measurement matrix
@@ -311,15 +309,15 @@ for i in range(nframes):
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
-        z_q_k = Rotation.as_quat(Rotation.from_matrix(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) @ R_1))  # this rotation is to set initial orientation to match with true
-        associated_R = np.eye(3)
+        # z_q_k = rotm2quat(R_1)
+        z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
     else:
-        z_q_k, associated_R = rotation_association(q_kp1, R_1)
+        z_q_k = rotation_association(q_kp1, R_1)
 
     associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    if i>0 and i%10 == 0:
+    if i>0 and i%500 == 0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -350,14 +348,11 @@ for i in range(nframes):
         #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
 
-        Rot_measured = Rotation.from_quat(z_q_k)
-        Rot_measured = Rotation.as_matrix(Rot_measured)
+        Rot_measured = quat2rotm(z_q_k)
 
-        R_estimated = Rotation.from_quat(q_kp1)
-        R_estimated = Rotation.as_matrix(R_estimated)
+        R_estimated = quat2rotm(q_kp1)
 
-        R_true = Rotation.from_quat(q_true[i, :])
-        R_true = Rotation.as_matrix(R_true)
+        R_true = quat2rotm(q_true[i,:])
 
 
         # plot measured
