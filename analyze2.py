@@ -96,13 +96,19 @@ def orientationupdate(dt, x_k):
     # Decompose the state vector
     omega_k = x_k[6:9]
     q_k = x_k[12:16]
+    qw = q_k[0]; qx = q_k[1]; qy = q_k[2]; qz = q_k[3]
 
-    hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
-                omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
-                omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
-                omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]])
+    # hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
+    #             omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
+    #             omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
+    #             omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]])
     
-    return normalize_quat(0.5 * dt * hamilton + q_k)
+    dqkdt = 0.5*np.array([[-qx, -qy, -qz],
+                          [qw, qz, -qy],
+                          [-qz, qw, qx],
+                          [qy, -qx, qw]]) @ omega_k
+    
+    return normalize_quat(dqkdt*dt + q_k)
 
 def F_matrix(dt, R, x_k):
     """
@@ -232,9 +238,9 @@ qq = 0.00005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.0055
+p = 0.007
 om = 0.0025
-p1 = 0.005
+p1 = 0.008
 q = 0.00004
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
@@ -244,7 +250,7 @@ H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
 # Kabsch estimation parameters
-n_moving_average = 5
+n_moving_average = 20
 settling_time = 50
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
@@ -317,7 +323,7 @@ for i in range(nframes):
     associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    if i>0 and i%500 == 0:
+    if i>0 and i%500==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
