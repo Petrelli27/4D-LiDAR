@@ -1,3 +1,5 @@
+import numpy.linalg
+
 import dynamics
 import math
 import matplotlib.pyplot as plt
@@ -9,6 +11,7 @@ from stl import mesh
 from estimateOmega import estimate_LLS as estimate
 from associationdata import nearest_search
 import pickle
+import scipy
 
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
@@ -309,13 +312,13 @@ p6_0 = p_0 + np.array([-L_0/2, D_0/2, -H_0/2])
 p7_0 = p_0 + np.array([-L_0/2, D_0/2, H_0/2])
 p8_0 = p_0 + np.array([L_0/2, D_0/2, H_0/2])
 x_0 = np.array([p_0, v_0, omega_0, p1_0, p2_0, p3_0, p4_0, p5_0, p6_0, p7_0, p8_0]).ravel()  # Initial State vector
-
+num_states = len(x_0)
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
                0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25])  # Initial Covariance matrix
 # Process noise covariance matrix
-qpixz = 0.00005
+qpixz = 0.0000005
 qpyz = 0.000025
-qpxyz = 0.0000001
+qpxyz = 0.0000000001
 qv = 0.0000005
 qom = 0.00005
 Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz,
@@ -372,57 +375,113 @@ omega_kabsch_b_box = np.zeros((n_moving_average,3))
 # convert points and LOS velocities to {L}
 for i in range(nframes):
 
-    # Decompose the state vector
-    p_k = x_k[:3]
-    v_k = x_k[3:6]
-    omega_k = x_k[6:9]
-    p1_k = x_k[9:12]
-    p2_k = x_k[12:15]
-    p3_k = x_k[15:18]
-    p4_k = x_k[18:21]
-    p5_k = x_k[21:24]
-    p6_k = x_k[24:27]
-    p7_k = x_k[27:30]
-    p8_k = x_k[30:33]
+    #state vector as mean for sigmapoint transform
+    mu_sp = x_k.copy()
 
-    #ax.scatter(x_k[0], x_k[1], x_k[2], color='r')
+    # stack covariance matrix with process noise
+    sigma_zz = P_k.copy()
 
-    z_v_s.append(v_k)
-    ##############
-    # Update state
-    ##############
+    # cholesky decomposition to calc sigmapoints
+    epsilon = 1e-10  # constant to ensure positive defineteness
+    try:
+        L = scipy.linalg.cholesky(sigma_zz)
+    except numpy.linalg.LinAlgError:
+        np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
 
-    # Centroid from vertices
-    c_k = (p1_k + p2_k + p3_k + p4_k + p5_k + p6_k + p7_k + p8_k) / 8.
+    # initial sigmapoint
+    sp_0 = mu_sp
 
-    # Position update
-    p_kp1 = v_k * dt + p_k
+    # other sigmapoints
+    dimL = len(mu_sp)
+    kappa = 2  # as per barfoot
 
-    # Velocity update
-    v_kp1 = v_k.copy()
+    sp_s = [sp_0]
+    sqrt_term = np.sqrt(dimL + kappa)
+    for idx in range(0, dimL):
+        col_i_L = L[:, idx]
+        sp_i = mu_sp + sqrt_term * col_i_L
+        sp_s.append(sp_i)
+    for idx in range(0, dimL):
+        col_i_L = L[:, idx]
+        sp_i_L = mu_sp - sqrt_term * col_i_L
+        sp_s.append(sp_i_L)
 
-    # Angular velocity update
-    omega_kp1 = omega_k.copy()
+    # pass each point through prediction model
+    alpha_0 = kappa / (dimL + kappa)
+    alpha_jdx = 0.5 / (dimL + kappa)
+    x_kp1 = np.zeros((num_states,))
+    sp_kp1s = []
+    for jdx, sp in enumerate(sp_s):
+        # Decompose the state vector
+        p_k = sp[:3]
+        v_k = sp[3:6]
+        omega_k = sp[6:9]
+        p1_k = sp[9:12]
+        p2_k = sp[12:15]
+        p3_k = sp[15:18]
+        p4_k = sp[18:21]
+        p5_k = sp[21:24]
+        p6_k = sp[24:27]
+        p7_k = sp[27:30]
+        p8_k = sp[30:33]
 
-    # Vertice updates
-    p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, R_k_kp1 = verticeupdate(dt, x_k)
+        ##############
+        # Update state
+        ##############
 
-    # Final box
-    #drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'g')
+        # Centroid from vertices
+        c_k = (p1_k + p2_k + p3_k + p4_k + p5_k + p6_k + p7_k + p8_k) / 8.
 
-    # Compute Jacobian
-    F_kp1 = F_matrix(dt, R_k_kp1, p_k, p1_k, p2_k, p3_k, p4_k, p5_k, p6_k, p7_k, p8_k)
+        # Position update
+        p_kp1 = v_k * dt + p_k
 
-    # Update Covariance
-    P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
+        # Velocity update
+        v_kp1 = v_k.copy()
 
+        # Angular velocity update
+        omega_kp1 = omega_k.copy()
 
-    # Make updated State vector
-    x_kp1 = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1]).ravel()
+        # Vertice updates
+        p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, R_k_kp1 = verticeupdate(dt, sp)
+
+        sp_kp1_jdx = np.array([p_kp1, v_kp1, omega_kp1, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1]).ravel()
+        sp_kp1s.append(sp_kp1_jdx)
+
+        # weighted sum of sigma points to get updated state
+        if jdx == 0:
+            x_kp1 += alpha_0 * sp_kp1_jdx
+        else:
+            x_kp1 += alpha_jdx * sp_kp1_jdx
+
+    z_v_s.append(x_k[3:6])
+
+    # update covariance
+    P_kp1 = np.zeros((num_states, num_states))
+    for kdx, sp in enumerate(sp_kp1s):
+        diff = sp - x_kp1
+        if kdx == 0:
+            P_kp1 += alpha_0 * np.outer(diff, diff.T)
+        else:
+            P_kp1 += alpha_jdx * np.outer(diff, diff.T)
+
+    P_kp1 += Q
+
 
     #######################
     # Make measurements
     #######################
+
+    # Decompose the state vector
+    p_k = x_k[:3]
+    v_k = x_k[3:6]
+    p1_kp1 = x_kp1[9:12]
+    p2_kp1 = x_kp1[12:15]
+    p3_kp1 = x_kp1[15:18]
+    p4_kp1 = x_kp1[18:21]
+    p5_kp1 = x_kp1[21:24]
+    p6_kp1 = x_kp1[24:27]
+    p7_kp1 = x_kp1[27:30]
+    p8_kp1 = x_kp1[30:33]
 
     PLs.append((np.linalg.inv(Rot_L_to_B[i]) @ (PBs[i]).T).T)
     # find bounding box from points
@@ -467,19 +526,6 @@ for i in range(nframes):
     # Estimate linear velocity
     #z_v_k1 = (np.array(z_p_k) - np.array(z_p_s[i-1]))/dt
 
-    #z_v_k_mag = np.mean(VBs[i])
-    #zv_mags.append(z_v_k_mag)
-    #print(debris_vel[i])
-    #print(z_v_k_mag)
-    #z_v_k = z_v_k_mag*np.array(-(debris_pos[i]))/np.linalg.norm(debris_pos[i])
-    #z_v_k = z_v_k_mag*-(Rot_L_to_B[i].T@np.array([0,0,1]))
-    #z_v_k = np.dot(z_v_k, debris_vel[i]/np.linalg.norm(debris_vel[i]))*(debris_vel[i]/np.linalg.norm(debris_vel[i]))
-    #z_v_s.append(z_v_k)
-    #z_v_k = debris_vel[i]
-
-    #print(z_v_k1)
-    #print(z_v_k)
-    #print(debris_vel[i])
 
     # find angular velocity from LOS velocities
     #c = debris_pos[i]
@@ -550,24 +596,78 @@ for i in range(nframes):
 
     z_kp1 = np.array(
         [z_p_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).ravel()
+
     ####################
+    # measurement update
+    ###################
 
-    #if False:
-    if i > 300 and abs(np.linalg.norm(z_p_k - p_kp1)) > 0.3:
-        pass
-    else:
-        # Calculate the Kalman gain
-        K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
+    # state vector as mean for sigmapoint transform
+    mu_sp = x_kp1.copy()
 
-        # Calculate Residual
-        res_kp1 = z_kp1 - np.matmul(H, x_kp1)
-        #print(res_kp1)
+    # stack covariance matrix with process noise
+    sigma_zz = P_kp1.copy()
 
-        # Update State
-        x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
+    # cholesky, ensure positive definiteness
+    try:
+        L = scipy.linalg.cholesky(sigma_zz)
+    except numpy.linalg.LinAlgError:
+        np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
 
-        # Update Covariance
-        P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1@H, P_kp1)
+    # initial sigmapoint
+    sp_0 = mu_sp
+
+    # other sigmapoints
+    dimL = len(mu_sp)
+    kappa = 2  # as per barfoot
+
+    sp_s = [sp_0]
+    sqrt_term = np.sqrt(dimL + kappa)
+    for idx in range(0, dimL):
+        col_i_L = L[:, idx]
+        sp_i = mu_sp + sqrt_term * col_i_L
+        sp_s.append(sp_i)
+    for idx in range(0, dimL):
+        col_i_L = L[:, idx]
+        sp_i_L = mu_sp - sqrt_term * col_i_L
+        sp_s.append(sp_i_L)
+
+    # pass each point through measurement model
+    y_kp1_s = []
+    mu_y_kp1 = 0
+    for jdx, sp in enumerate(sp_s):
+        y_kp1 = H @ sp
+        if jdx == 0:
+            mu_y_kp1 += alpha_0 * y_kp1
+        else:
+            mu_y_kp1 += alpha_jdx * y_kp1
+        y_kp1_s.append(y_kp1)
+
+    # varios aposteriori covariances
+    num_meas = len(z_kp1)
+    sigma_yy = np.zeros((num_meas, num_meas))
+    sigma_xy = np.zeros((num_states, num_meas))
+    for kdx, sp in enumerate(sp_kp1s):
+        diff_x = sp - x_kp1
+        diff_y = y_kp1_s[kdx] - mu_y_kp1
+        if kdx == 0:
+            sigma_yy += alpha_0 * np.outer(diff_y, diff_y.T)
+            sigma_xy += alpha_0 * np.outer(diff_x, diff_y.T)
+        else:
+            sigma_yy += alpha_jdx * np.outer(diff_y, diff_y.T)
+            sigma_xy += alpha_jdx * np.outer(diff_x, diff_y.T)
+
+    # Kalman gain
+    sigma_yy += R
+    K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
+
+    # Calculate Residual
+    res_kp1 = z_kp1 - np.matmul(H, x_kp1)
+
+    # Update State
+    x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
+
+    # Update Covariance
+    P_kp1 = P_kp1 - np.matmul(K_kp1, np.matmul(sigma_yy, K_kp1.T))
 
     # Transfer states and covariance from kp1 to k
     P_k = P_kp1.copy()
