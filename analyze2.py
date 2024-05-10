@@ -232,16 +232,16 @@ P_k = P_0.copy()  # covariance matrix
 # Process noise covariance matrix
 qp = 0.0000025
 qv = 0.0000005
-qom = 0.00005
+qom = 0.000005
 qp1 = 0.000005
 qq = 0.00005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
 p = 0.007
-om = 0.0005
+om = 0.001
 p1 = 0.008
-q = 0.004
+q = 0.04
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
 # Measurement matrix
@@ -250,8 +250,8 @@ H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
 # Kabsch estimation parameters
-n_moving_average = 30
-settling_time = 100
+n_moving_average = 20
+settling_time = 50
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -329,7 +329,7 @@ for i in range(nframes):
         associatedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
         z_p1_k = associatedBbox[:,0]
 
-    if i>0 and (i>68 and i<100 or abs(i-220)<15) and i%10==0:
+    if i>0 and (abs(i-144)<15) and i%3==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
