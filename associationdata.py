@@ -116,5 +116,9 @@ def rotation_association(q_kp1, R_1):
                 angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
     R_index = np.argmin(np.abs(angle_diffs))
-    associated_R = possible_Rs[R_index] # already pre-multiplied by R_1
-    return (rotm2quat(associated_R))
+    threshold = np.deg2rad(35)
+    if np.abs(angle_diffs[R_index]) <= threshold:
+        associated_R = possible_Rs[R_index] # already pre-multiplied by R_1
+        return (rotm2quat(associated_R))
+    else:
+        return q_kp1

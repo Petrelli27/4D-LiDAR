@@ -47,7 +47,7 @@ omega_L = np.array([1, 1, 1]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
-nframes = 100
+nframes = 2000
 dt = 0.05
 
 # simulate debris velocity (linear and angular) in {L} frame from dynamics
@@ -172,6 +172,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim_kompsat_neg_om.pickle', 'wb') as sim_data:
+with open('sim_kompsat_neg_om_long.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 

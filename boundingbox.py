@@ -180,5 +180,20 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
 
     return associatedBbox, L, W, H
 
+def from_params(p, q, length, width, height):
+    R = quat2rotm(q)
+    vertices = np.array([
+        [-length / 2, -width / 2, -height / 2],
+        [-length / 2, width / 2, -height / 2],
+        [length / 2, -width / 2, -height / 2],
+        [length / 2, width / 2, -height / 2],
+        [-length / 2, -width / 2, height / 2],
+        [-length / 2, width / 2, height / 2],
+        [length / 2, -width / 2, height / 2],
+        [length / 2, width / 2, height / 2]
+    ])
+    bbox = (R @ vertices.T) + p.reshape(3,1) # rotate and move
+    return bbox
+
 
 

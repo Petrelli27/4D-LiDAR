@@ -187,8 +187,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-# with open('sim_kompsat_neg_om.pickle', 'rb') as sim_data:
-with open('sim_new_conditions.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_long.pickle', 'rb') as sim_data:
+# with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -239,9 +239,9 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 
 # Measurement noise covariance matrix
 p = 0.007
-om = 0.0025
+om = 0.0005
 p1 = 0.008
-q = 0.00004
+q = 0.004
 R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 
 # Measurement matrix
@@ -250,8 +250,8 @@ H[0:3,0:3] = np.eye(3)
 H[3:,6:] = np.eye(10)
 
 # Kabsch estimation parameters
-n_moving_average = 20
-settling_time = 50
+n_moving_average = 30
+settling_time = 100
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -320,10 +320,16 @@ for i in range(nframes):
     else:
         z_q_k = rotation_association(q_kp1, R_1)
 
-    associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-    z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    if i==0 or (not np.allclose(z_q_k, q_kp1)):
+        associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+        z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    else:
+        LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+        L = LWD[0]; W = LWD[1]; D = LWD[2]
+        associatedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
+        z_p1_k = associatedBbox[:,0]
 
-    if i>0 and i%500==0:
+    if i>0 and (i>68 and i<100 or abs(i-220)<15) and i%10==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
