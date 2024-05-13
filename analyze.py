@@ -257,7 +257,7 @@ def verticeupdate(dt, x_k):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_kompsat670.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_long.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
