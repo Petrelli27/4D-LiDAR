@@ -187,6 +187,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
+# with open('sim_kompsat670.pickle', 'rb') as sim_data:
 with open('sim_kompsat_neg_om_long.pickle', 'rb') as sim_data:
 # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
@@ -320,16 +321,18 @@ for i in range(nframes):
     else:
         z_q_k = rotation_association(q_kp1, R_1)
 
-    if i==0 or (not np.allclose(z_q_k, q_kp1)):
-        associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-        z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-    else:
-        LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
-        L = LWD[0]; W = LWD[1]; D = LWD[2]
-        associatedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-        z_p1_k = associatedBbox[:,0]
+    # if i==0 or (not np.allclose(z_q_k, q_kp1)):
+        # first use q from R_1 to get L,W,D
+        # then use z_q_k (not perfectly aligned) to get 
+    associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    # else:
+    #     LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+    #     L = LWD[0]; W = LWD[1]; D = LWD[2]
+    #     associatedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
+    #     z_p1_k = associatedBbox[:,0]
 
-    if i>0 and (abs(i-144)<15) and i%3==0:
+    if i>0 and (abs(i-80)<4) and i%2==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')

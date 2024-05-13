@@ -23,3 +23,17 @@ def normalize_quat(q):
     q_norm = np.linalg.norm(q)
     q_unit = q/q_norm
     return q_unit
+
+def sigmoid(x, a=0.9, k=7):
+    s= 1/(1+np.exp(k*(x-a)))
+    y = -2/math.pi *x + 1
+    if y > 1:
+        y = 1
+    elif y < 0:
+        y = 0
+    return s
+
+def slerp(p0, p1, t):
+        omega = np.arccos(np.dot(p0/np.linalg.norm(p0), p1/np.linalg.norm(p1)))
+        so = np.sin(omega)
+        return np.sin((1.0-t)*omega) / so * p0 + np.sin(t*omega)/so * p1

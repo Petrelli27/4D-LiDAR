@@ -57,9 +57,9 @@ debris_vel = np.vstack([vx,vy,vz]).T
 # specify Lidar resolution and range
 # LiDAR point cloud generation initializations
 ang_res = 0.025  # angular resolution of Aeries 2 LiDAR
-h_resolution = 40  # Number of rays horizontally
-v_resolution = 40  # Number of rays vertically
-res_box = 5.5
+# h_resolution = 40  # Number of rays horizontally
+# v_resolution = 40  # Number of rays vertically
+res_box = 7
 # h_range = 120  # Vertical lidar angle range in degrees
 # v_range = 60  # Horizontal lidar angle range in degrees
 
@@ -85,8 +85,8 @@ for i in range(nframes):
     print("Current iteration: " + str(i))
 
     fov = np.rad2deg(2*np.arctan2(res_box / 2, d[i]))
-    h_resolution = int(fov / ang_res) if fov < 1 else 40
-    v_resolution = int(fov / ang_res) if fov < 1 else 40
+    h_resolution = min(int(fov / ang_res),60)
+    v_resolution = min(int(fov / ang_res),60)
     h_range = fov  # Vertical lidar angle range in degrees
     v_range = fov  # Horizontal lidar angle range in degrees
 

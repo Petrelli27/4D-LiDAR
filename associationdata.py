@@ -115,10 +115,28 @@ def rotation_association(q_kp1, R_1):
                 rotation_diff = (predicted_R.T) @ (possible_R)
                 angle_diff = np.arccos((np.trace(rotation_diff) - 1) / 2)
                 angle_diffs.append(angle_diff)
-    R_index = np.argmin(np.abs(angle_diffs))
+    angle_errors = np.array(np.abs(angle_diffs)) # take abs value and convert to np array
+    R_indices = np.argsort(angle_errors)
     threshold = np.deg2rad(35)
-    if np.abs(angle_diffs[R_index]) <= threshold:
-        associated_R = possible_Rs[R_index] # already pre-multiplied by R_1
-        return (rotm2quat(associated_R))
-    else:
-        return q_kp1
+    Q_list = []
+    weights = []
+    counter = 0
+    for i in R_indices:
+        if counter > 1:
+            break
+        angle_error = angle_errors[i]
+        # if angle_error  <= threshold:
+        Q_list.append((rotm2quat(possible_Rs[i]))) # auto sorted
+        weights.append(sigmoid(angle_error))
+        counter += 1
+    weights_normed = np.array(weights)/np.sum(weights)
+
+    Q = (np.array(Q_list)).T
+    Q = (weights_normed) * Q
+    QQT = Q@(Q.T)
+    eigenvalues, eigenvectors = np.linalg.eig(QQT)
+    max_eigval_index = np.argmax(eigenvalues)
+    q_avg = eigenvectors[max_eigval_index]
+    if q_avg[0] < 0:
+        q_avg = -q_avg
+    return slerp(Q_list[0], Q_list[1], weights_normed[1])

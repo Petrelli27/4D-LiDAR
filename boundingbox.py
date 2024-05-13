@@ -142,26 +142,46 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
     centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
     aligned_coords = R.T @ centered_coords
 
-    for i, point in enumerate(aligned_coords.T):
+    ref_points = np.array([[-1,-1,-1],
+                          [-1,1,-1],
+                          [1,1,-1],
+                          [1,-1,-1],
+                          [-1,-1,1],
+                          [-1,1,1],
+                          [1,1,1],
+                          [1,-1,1]])
+    match_indices = []
+    for i, ref_point in enumerate(ref_points):
+        match_indices.append(np.argmin(np.linalg.norm(aligned_coords.T - ref_point, axis=1)))
+    z_p1_k = aligned_coords.T[match_indices[0]]
+    z_p2_k = aligned_coords.T[match_indices[1]]
+    z_p3_k = aligned_coords.T[match_indices[2]]
+    z_p4_k = aligned_coords.T[match_indices[3]]
+    z_p5_k = aligned_coords.T[match_indices[4]]
+    z_p6_k = aligned_coords.T[match_indices[5]]
+    z_p7_k = aligned_coords.T[match_indices[6]]
+    z_p8_k = aligned_coords.T[match_indices[7]] 
+
+    # for i, point in enumerate(aligned_coords.T):
 
 
-        x, y, z = point
-        if x < 0 and y < 0 and z < 0:
-            z_p1_k = point
-        elif x < 0 and y > 0 and z < 0:
-            z_p2_k = point
-        elif x > 0 and y > 0  and z < 0:
-            z_p3_k = point
-        elif x > 0 and y < 0 and z < 0:
-            z_p4_k = point
-        elif x < 0 and y < 0 and z > 0:
-            z_p5_k = point
-        elif x < 0 and y > 0 and z > 0:
-            z_p6_k = point
-        elif x > 0 and y > 0 and z > 0:
-            z_p7_k = point
-        else:
-            z_p8_k = point
+    #     x, y, z = point
+    #     if x < 0 and y < 0 and z < 0:
+    #         z_p1_k = point
+    #     elif x < 0 and y > 0 and z < 0:
+    #         z_p2_k = point
+    #     elif x > 0 and y > 0  and z < 0:
+    #         z_p3_k = point
+    #     elif x > 0 and y < 0 and z < 0:
+    #         z_p4_k = point
+    #     elif x < 0 and y < 0 and z > 0:
+    #         z_p5_k = point
+    #     elif x < 0 and y > 0 and z > 0:
+    #         z_p6_k = point
+    #     elif x > 0 and y > 0 and z > 0:
+    #         z_p7_k = point
+    #     else:
+    #         z_p8_k = point
 
 
     aligned_coords_final = np.array([z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).T
@@ -190,8 +210,7 @@ def from_params(p, q, length, width, height):
         [-length / 2, -width / 2, height / 2],
         [-length / 2, width / 2, height / 2],
         [length / 2, -width / 2, height / 2],
-        [length / 2, width / 2, height / 2]
-    ])
+        [length / 2, width / 2, height / 2]])
     bbox = (R @ vertices.T) + p.reshape(3,1) # rotate and move
     return bbox
 
