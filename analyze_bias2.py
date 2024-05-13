@@ -309,7 +309,7 @@ p6_0 = p_0 + np.array([-L_0/2, D_0/2, -H_0/2])
 p7_0 = p_0 + np.array([-L_0/2, D_0/2, H_0/2])
 p8_0 = p_0 + np.array([L_0/2, D_0/2, H_0/2])
 # bz_0 = [0.05, 0.05, 0.0]  # measurement bias
-bz_0 = [0.5, 0.5, 0.5]  # measurement bias
+bz_0 = [0., 0., 0.]  # measurement bias
 x_0 = np.array([p_0, v_0, omega_0, p1_0, p2_0, p3_0, p4_0, p5_0, p6_0, p7_0, p8_0, bz_0]).ravel()  # Initial State vector
 
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
@@ -595,15 +595,19 @@ for i in range(nframes):
     # Calculate Residual
     res_kp1 = z_kp1 - np.matmul(H, x_kp1)
 
-    # if res_kp1p[0] > 0:
-    #
-    # else:
-    #
-    # if res_kp1[1] > 0:
-    # else:
-    #
-    # if res_kp1[2] > 0:
-    # else:
+    if res_kp1[0] > 0:
+        pass
+    else:
+        R[0, 0] = 1e-3 * R[0, 0]
+    if res_kp1[1] > 0:
+        pass
+    else:
+        R[1, 1] = 1e-3 * R[1, 1]
+    if res_kp1[2] > 0:
+        pass
+    else:
+        R[2, 2] = 1e-3 * R[2, 2]
+
     print(i)
     print(K_kp1[0, :])
     print(z_kp1[:3])

@@ -315,7 +315,7 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
 # Process noise covariance matrix
 qpixz = 0.00005
 qpyz = 0.000025
-qpxyz = 0.0000001
+qpxyz = 0.000000001
 qv = 0.0000005
 qom = 0.00005
 Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz,
@@ -327,7 +327,7 @@ om = 0.25
 vn = 0.01
 pxyz = 0.05
 pyy = 0.05
-R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
+R_0 = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
                pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 #R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
  #              pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
@@ -368,10 +368,12 @@ settling_time = 500
 omega_kabsch_b = np.zeros((nframes, 3))
 omega_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
+done = 0
 
 # convert points and LOS velocities to {L}
 for i in range(nframes):
 
+    R = R_0
     # Decompose the state vector
     p_k = x_k[:3]
     v_k = x_k[3:6]
@@ -552,22 +554,35 @@ for i in range(nframes):
         [z_p_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).ravel()
     ####################
 
-    #if False:
-    if i > 300 and abs(np.linalg.norm(z_p_k - p_kp1)) > 0.3:
-        pass
-    else:
-        # Calculate the Kalman gain
-        K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
 
-        # Calculate Residual
-        res_kp1 = z_kp1 - np.matmul(H, x_kp1)
-        #print(res_kp1)
+    # Calculate the Kalman gain
+    K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
 
-        # Update State
-        x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
+    # Calculate Residual
+    res_kp1 = z_kp1 - np.matmul(H, x_kp1)
+    #print(res_kp1)
 
-        # Update Covariance
-        P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1@H, P_kp1)
+    if i > 300:
+        if done == 0:
+            if res_kp1[0] > 0:
+                pass
+            else:
+                R[0, 0] = 1e-3 * R[0, 0]
+                done = 1
+        if res_kp1[1] > 0:
+            pass
+        else:
+            R[1, 1] = 1e-3 * R[1, 1]
+        if res_kp1[2] > 0:
+            pass
+        else:
+            R[2, 2] = 1e-3 * R[2, 2]
+
+    # Update State
+    x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
+
+    # Update Covariance
+    P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1@H, P_kp1)
 
     # Transfer states and covariance from kp1 to k
     P_k = P_kp1.copy()
