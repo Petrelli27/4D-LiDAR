@@ -298,8 +298,8 @@ L_0 = 2  # Initial Length of box - x
 D_0 = 2  # Initial Width of box - y
 H_0 = 2  # Initial Height of box - z
 p_0 = [-170., -350., -20.]#np.array(debris_pos[0])  # Guess of initial position of debris - *need to formulate guess*
-v_0 = [1., 1., 1.]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [5.,-5.,4.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
+v_0 = [0.1, 0.1, 0.1]#np.array(debris_vel[0])  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
+omega_0 = [1., 1., 1.] #np.array(omega_L)  # Initial guess of angular velocities - *need to formulate guess*
 
 # For the initializations, imagine a bounding box bottom right = p1, bottom left = p2, TP = p3, TR = p4, p5, p6, p7, p8 are
 # the same but in the back, centered at p0
@@ -313,23 +313,23 @@ p7_0 = p_0 + np.array([-L_0/2, D_0/2, H_0/2])
 p8_0 = p_0 + np.array([L_0/2, D_0/2, H_0/2])
 x_0 = np.array([p_0, v_0, omega_0, p1_0, p2_0, p3_0, p4_0, p5_0, p6_0, p7_0, p8_0]).ravel()  # Initial State vector
 num_states = len(x_0)
-P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
-               0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25])  # Initial Covariance matrix
+P_0 = np.diag([5, 5, 5, 0.5, 0.5, 0.5, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+               5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5])  # Initial Covariance matrix
 # Process noise covariance matrix
-qpixz = 0.0000005
-qpyz = 0.000025
-qpxyz = 0.0000000001
-qv = 0.0000005
-qom = 0.00005
+qpixz = 1e-6
+qpyz = 1e-6
+qpxyz = 1e-6
+qv = 1e-6
+qom = 1e-6
 Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz,
                qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz])
 # Measurement noise covariance matrix
-pxz = 500
-py = 500
-om = 0.25
-vn = 0.01
-pxyz = 0.05
-pyy = 0.05
+pxz = 1e-6
+py = 1e-6
+om = 1e-6
+vn = 1e-6
+pxyz = 1e-6
+pyy = 1e-6
 R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
                pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 #R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
@@ -372,9 +372,28 @@ omega_kabsch_b = np.zeros((nframes, 3))
 omega_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
 
+# ukf weight values
+alpha = 1e-6
+beta = 2
+kappa = 0
+dimL = len(x_0)
+lambd = alpha ** 2 * (dimL + kappa) - dimL
+w_0_m = lambd / (lambd + dimL)  # first weight for computing the mean
+w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
+w_0_c = w_0_m + (1 - alpha ** 2 + beta)  # first weight for computing covariance
+w_j_c = w_j_m
+
+# barfoot
+# lambd = 2  # formerly kappa
+# w_0_m = lambd / (lambd + dimL) # first weight for computing the mean
+# w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
+# w_0_c = w_0_m  # first weight for computing covariance
+# w_j_c = w_j_m
+
+
 # convert points and LOS velocities to {L}
 for i in range(nframes):
-
+    print(i)
     #state vector as mean for sigmapoint transform
     mu_sp = x_k.copy()
 
@@ -387,16 +406,14 @@ for i in range(nframes):
         L = scipy.linalg.cholesky(sigma_zz)
     except numpy.linalg.LinAlgError:
         np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
+        L = scipy.linalg.cholesky(sigma_zz)
 
     # initial sigmapoint
     sp_0 = mu_sp
 
     # other sigmapoints
-    dimL = len(mu_sp)
-    kappa = 2  # as per barfoot
-
     sp_s = [sp_0]
-    sqrt_term = np.sqrt(dimL + kappa)
+    sqrt_term = np.sqrt(dimL + lambd)
     for idx in range(0, dimL):
         col_i_L = L[:, idx]
         sp_i = mu_sp + sqrt_term * col_i_L
@@ -407,8 +424,6 @@ for i in range(nframes):
         sp_s.append(sp_i_L)
 
     # pass each point through prediction model
-    alpha_0 = kappa / (dimL + kappa)
-    alpha_jdx = 0.5 / (dimL + kappa)
     x_kp1 = np.zeros((num_states,))
     sp_kp1s = []
     for jdx, sp in enumerate(sp_s):
@@ -429,9 +444,6 @@ for i in range(nframes):
         # Update state
         ##############
 
-        # Centroid from vertices
-        c_k = (p1_k + p2_k + p3_k + p4_k + p5_k + p6_k + p7_k + p8_k) / 8.
-
         # Position update
         p_kp1 = v_k * dt + p_k
 
@@ -449,9 +461,9 @@ for i in range(nframes):
 
         # weighted sum of sigma points to get updated state
         if jdx == 0:
-            x_kp1 += alpha_0 * sp_kp1_jdx
+            x_kp1 += w_0_m * sp_kp1_jdx
         else:
-            x_kp1 += alpha_jdx * sp_kp1_jdx
+            x_kp1 += w_j_m * sp_kp1_jdx
 
     z_v_s.append(x_k[3:6])
 
@@ -460,11 +472,12 @@ for i in range(nframes):
     for kdx, sp in enumerate(sp_kp1s):
         diff = sp - x_kp1
         if kdx == 0:
-            P_kp1 += alpha_0 * np.outer(diff, diff.T)
+            P_kp1 += w_0_c * np.outer(diff, diff.T)
         else:
-            P_kp1 += alpha_jdx * np.outer(diff, diff.T)
+            P_kp1 += w_j_c * np.outer(diff, diff.T)
 
     P_kp1 += Q
+    P_kp1 = 0.5 * P_kp1 + 0.5 * P_kp1.T
 
 
     #######################
@@ -498,34 +511,6 @@ for i in range(nframes):
     # Vertice association
     pi_pk1 = [p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1]
     z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k = nearest_search(pi_pk1-p_k-v_k*dt, z_pi_k, z_p_k)
-
-
-
-    #ax.scatter(debris_pos[i, 0], debris_pos[i, 1], debris_pos[i, 2], color='g')
-    #ax.scatter(X_i, Y_i, Z_i)
-    #ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
-    # ax.add_collection3d(mplot3d.art3d.Poly3DCollection(debris.vectors, alpha=0.3))
-    # drawrectangle(ax, z_pi_k[:,0], z_pi_k[:,1], z_pi_k[:,2], z_pi_k[:,3], z_pi_k[:,4], z_pi_k[:,5], z_pi_k[:,6], z_pi_k[:,7], 'b')
-    if False:
-    # if i>1000 and i%10 == 0:
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.legend()
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_zlabel('z')
-        ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=0.5)
-        drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
-        drawrectangle(ax, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k, 'b')
-        ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
-        ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
-        ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')
-
-    
-        plt.show()
-    # Estimate linear velocity
-    #z_v_k1 = (np.array(z_p_k) - np.array(z_p_s[i-1]))/dt
-
 
     # find angular velocity from LOS velocities
     #c = debris_pos[i]
@@ -602,72 +587,79 @@ for i in range(nframes):
     ###################
 
     # state vector as mean for sigmapoint transform
-    mu_sp = x_kp1.copy()
+    mu_sp_m = x_kp1.copy()
 
     # stack covariance matrix with process noise
-    sigma_zz = P_kp1.copy()
+    sigma_zz_m = P_kp1.copy()
 
     # cholesky, ensure positive definiteness
     try:
-        L = scipy.linalg.cholesky(sigma_zz)
+        L_m = scipy.linalg.cholesky(sigma_zz_m)
     except numpy.linalg.LinAlgError:
-        np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
+        np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
+        L_m = scipy.linalg.cholesky(sigma_zz_m)
 
     # initial sigmapoint
-    sp_0 = mu_sp
+    sp_0_m = mu_sp_m
 
     # other sigmapoints
-    dimL = len(mu_sp)
-    kappa = 2  # as per barfoot
+    sp_s_m = [sp_0_m]
+    sqrt_term_m = np.sqrt(dimL + lambd)
+    for idx in range(0, dimL):
+        col_i_L_m = L_m[:, idx]
+        sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
+        sp_s_m.append(sp_i_m)
+    for idx in range(0, dimL):
+        col_i_L_m = L_m[:, idx]
+        sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
+        sp_s_m.append(sp_i_L_m)
 
-    sp_s = [sp_0]
-    sqrt_term = np.sqrt(dimL + kappa)
-    for idx in range(0, dimL):
-        col_i_L = L[:, idx]
-        sp_i = mu_sp + sqrt_term * col_i_L
-        sp_s.append(sp_i)
-    for idx in range(0, dimL):
-        col_i_L = L[:, idx]
-        sp_i_L = mu_sp - sqrt_term * col_i_L
-        sp_s.append(sp_i_L)
+    print([pos[:3] for zdx, pos in enumerate(sp_s_m)])
 
     # pass each point through measurement model
-    y_kp1_s = []
-    mu_y_kp1 = 0
-    for jdx, sp in enumerate(sp_s):
-        y_kp1 = H @ sp
-        if jdx == 0:
-            mu_y_kp1 += alpha_0 * y_kp1
-        else:
-            mu_y_kp1 += alpha_jdx * y_kp1
-        y_kp1_s.append(y_kp1)
-
-    # varios aposteriori covariances
+    y_kp1_s_m = []
     num_meas = len(z_kp1)
+    mu_y_kp1_m = np.zeros((num_meas,))
+    for jdx, sp_m in enumerate(sp_s_m):
+        y_kp1_m = H @ sp_m
+        if jdx == 0:
+            mu_y_kp1_m += w_0_m * y_kp1_m
+        else:
+            mu_y_kp1_m += w_j_m * y_kp1_m
+        y_kp1_s_m.append(y_kp1_m)
+
+    # various aposteriori covariances
     sigma_yy = np.zeros((num_meas, num_meas))
     sigma_xy = np.zeros((num_states, num_meas))
-    for kdx, sp in enumerate(sp_kp1s):
-        diff_x = sp - x_kp1
-        diff_y = y_kp1_s[kdx] - mu_y_kp1
+    for kdx, sp in enumerate(sp_s_m):
+        diff_x_m = sp - x_kp1
+        diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
+
         if kdx == 0:
-            sigma_yy += alpha_0 * np.outer(diff_y, diff_y.T)
-            sigma_xy += alpha_0 * np.outer(diff_x, diff_y.T)
+            sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
+            sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
         else:
-            sigma_yy += alpha_jdx * np.outer(diff_y, diff_y.T)
-            sigma_xy += alpha_jdx * np.outer(diff_x, diff_y.T)
+            sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
+            sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
+
+        print(sigma_yy.diagonal())
+        input()
+
 
     # Kalman gain
+    print(sigma_yy.diagonal())
     sigma_yy += R
     K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
 
     # Calculate Residual
-    res_kp1 = z_kp1 - np.matmul(H, x_kp1)
+    res_kp1 = z_kp1 - mu_y_kp1_m
 
     # Update State
-    x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
+    x_kp1 = x_kp1 + K_kp1@res_kp1
 
     # Update Covariance
-    P_kp1 = P_kp1 - np.matmul(K_kp1, np.matmul(sigma_yy, K_kp1.T))
+    P_kp1 = P_kp1 - K_kp1 @ sigma_yy @ K_kp1.T
+    P_kp1 = 0.5 * P_kp1 + 0.5 * P_kp1.T
 
     # Transfer states and covariance from kp1 to k
     P_k = P_kp1.copy()
