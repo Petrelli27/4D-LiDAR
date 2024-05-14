@@ -476,7 +476,6 @@ for i in range(nframes):
         else:
             P_kp1 += w_j_c * np.outer(diff, diff.T)
 
-    print(P_kp1.diagonal())
     P_kp1 += Q
     P_kp1 = 0.5 * P_kp1 + 0.5 * P_kp1.T
 
@@ -583,83 +582,98 @@ for i in range(nframes):
     z_kp1 = np.array(
         [z_p_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).ravel()
 
-    ####################
-    # measurement update
-    ###################
 
-    # state vector as mean for sigmapoint transform
-    mu_sp_m = x_kp1.copy()
+    #################
+    # iterated measurement update
+    #################
+    x_op = x_kp1.copy()
+    P_op = P_kp1.copy()
+    tolerance = 1e-3
+    current_difference = 1
+    while current_difference > tolerance:
 
-    # stack covariance matrix with process noise
-    sigma_zz_m = P_kp1.copy()
+        ####################
+        # measurement update
+        ###################
 
-    # cholesky, ensure positive definiteness
-    try:
-        L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
-    except numpy.linalg.LinAlgError:
-        np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
-        L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+        # state vector as mean for sigmapoint transform
+        mu_sp_m = x_op.copy()
 
+        # stack covariance matrix with process noise
+        sigma_zz_m = P_op.copy()
 
-    # initial sigmapoint
-    sp_0_m = mu_sp_m
-
-    # other sigmapoints
-    sp_s_m = [sp_0_m]
-    sqrt_term_m = np.sqrt(dimL + lambd)
-    for idx in range(0, dimL):
-        col_i_L_m = L_m[:, idx]
-        sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
-        sp_s_m.append(sp_i_m)
-    for idx in range(0, dimL):
-        col_i_L_m = L_m[:, idx]
-        sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
-        sp_s_m.append(sp_i_L_m)
-
-    # pass each point through measurement model
-    y_kp1_s_m = []
-    num_meas = len(z_kp1)
-    mu_y_kp1_m = np.zeros((num_meas,))
-    for jdx, sp_m in enumerate(sp_s_m):
-        y_kp1_m = H @ sp_m
-        if jdx == 0:
-            mu_y_kp1_m += w_0_m * y_kp1_m
-        else:
-            mu_y_kp1_m += w_j_m * y_kp1_m
-        y_kp1_s_m.append(y_kp1_m)
-
-    # various aposteriori covariances
-    sigma_yy = np.zeros((num_meas, num_meas))
-    sigma_xy = np.zeros((num_states, num_meas))
-    for kdx, sp in enumerate(sp_s_m):
-        diff_x_m = sp - x_kp1
-        diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
-        if kdx == 0:
-            sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
-            sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
-        else:
-            sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
-            sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
+        # cholesky, ensure positive definiteness
+        try:
+            L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+        except numpy.linalg.LinAlgError:
+            np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
+            L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
 
 
+        # initial sigmapoint
+        sp_0_m = mu_sp_m
 
-    # Kalman gain
-    sigma_yy += R
-    K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
+        # other sigmapoints
+        sp_s_m = [sp_0_m]
+        sqrt_term_m = np.sqrt(dimL + lambd)
+        for idx in range(0, dimL):
+            col_i_L_m = L_m[:, idx]
+            sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
+            sp_s_m.append(sp_i_m)
+        for idx in range(0, dimL):
+            col_i_L_m = L_m[:, idx]
+            sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
+            sp_s_m.append(sp_i_L_m)
 
-    # Calculate Residual
-    res_kp1 = z_kp1 - mu_y_kp1_m
+        # pass each point through measurement model
+        y_kp1_s_m = []
+        num_meas = len(z_kp1)
+        mu_y_kp1_m = np.zeros((num_meas,))
+        for jdx, sp_m in enumerate(sp_s_m):
+            y_kp1_m = H @ sp_m
+            if jdx == 0:
+                mu_y_kp1_m += w_0_m * y_kp1_m
+            else:
+                mu_y_kp1_m += w_j_m * y_kp1_m
+            y_kp1_s_m.append(y_kp1_m)
 
-    # Update State
-    x_kp1 = x_kp1 + K_kp1@res_kp1
+        # various aposteriori covariances
+        sigma_yy = np.zeros((num_meas, num_meas))
+        sigma_xy = np.zeros((num_states, num_meas))
+        for kdx, sp in enumerate(sp_s_m):
+            diff_x_m = sp - x_kp1
+            diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
+            if kdx == 0:
+                sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
+                sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
+            else:
+                sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
+                sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
 
-    # Update Covariance
-    P_kp1 = P_kp1 - K_kp1 @ sigma_yy @ K_kp1.T
+
+        # Kalman gain
+        sigma_yy += R
+        K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
+
+        # Calculate Residual
+        res_kp1 = z_kp1 - mu_y_kp1_m
+
+        x_op_prev = x_op.copy()
+
+        # Update State
+        x_op = x_op + K_kp1@res_kp1
+
+        # Update Covariance
+        P_op = P_op - K_kp1 @ sigma_yy @ K_kp1.T
+
+        current_difference = np.linalg.norm(x_op - x_op_prev)
+
+    # smooth out covariance off diagonals
     P_kp1 = 0.5 * P_kp1 + 0.5 * P_kp1.T
 
     # Transfer states and covariance from kp1 to k
-    P_k = P_kp1.copy()
-    x_k = x_kp1.copy()
+    P_k = P_op.copy()
+    x_k = x_op.copy()
 
     # Append for analysis
     z_p_s.append(z_p_k)
