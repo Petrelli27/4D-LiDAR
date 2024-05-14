@@ -117,7 +117,7 @@ def rotation_association(q_kp1, R_1):
                 angle_diffs.append(angle_diff)
     angle_errors = np.array(np.abs(angle_diffs)) # take abs value and convert to np array
     R_indices = np.argsort(angle_errors)
-    threshold = np.deg2rad(35)
+    threshold = np.deg2rad(32)
     Q_list = []
     weights = []
     counter = 0
@@ -129,14 +129,18 @@ def rotation_association(q_kp1, R_1):
         Q_list.append((rotm2quat(possible_Rs[i]))) # auto sorted
         weights.append(sigmoid(angle_error))
         counter += 1
+    min_error = min(abs(angle_errors))
+    bad_attitude_measurement_flag = (min_error > threshold)
+    # bad_attitude_measurement_flag = False
     weights_normed = np.array(weights)/np.sum(weights)
 
-    Q = (np.array(Q_list)).T
-    Q = (weights_normed) * Q
-    QQT = Q@(Q.T)
-    eigenvalues, eigenvectors = np.linalg.eig(QQT)
-    max_eigval_index = np.argmax(eigenvalues)
-    q_avg = eigenvectors[max_eigval_index]
-    if q_avg[0] < 0:
-        q_avg = -q_avg
-    return slerp(Q_list[0], Q_list[1], weights_normed[1])
+    # Q = (np.array(Q_list)).T
+    # Q = (weights_normed) * Q
+    # QQT = Q@(Q.T)
+    # eigenvalues, eigenvectors = np.linalg.eig(QQT)
+    # max_eigval_index = np.argmax(eigenvalues)
+    # q_avg = eigenvectors[max_eigval_index]
+    # if q_avg[0] < 0:
+    #     q_avg = -q_avg
+    # return Q_list[0], bad_attitude_measurement_flag
+    return slerp(Q_list[0], Q_list[1], weights_normed[1]), bad_attitude_measurement_flag, min_error

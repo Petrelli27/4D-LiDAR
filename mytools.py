@@ -22,7 +22,7 @@ def quat2rotm(q):
 def normalize_quat(q):
     q_norm = np.linalg.norm(q)
     q_unit = q/q_norm
-    return q_unit
+    return q_unit if q_unit[0] >= 0 else -q_unit
 
 def sigmoid(x, a=0.9, k=7):
     s= 1/(1+np.exp(k*(x-a)))
@@ -37,3 +37,11 @@ def slerp(p0, p1, t):
         omega = np.arccos(np.dot(p0/np.linalg.norm(p0), p1/np.linalg.norm(p1)))
         so = np.sin(omega)
         return np.sin((1.0-t)*omega) / so * p0 + np.sin(t*omega)/so * p1
+
+def padding_nan(data):
+    maxlen = max(len(l) for l in data)
+    for i, l in enumerate(data):
+        if maxlen - len(l) == 0:
+            continue
+        data[i] = np.concatenate([l, [np.nan] * (maxlen - len(l))])
+    return np.array(data)
