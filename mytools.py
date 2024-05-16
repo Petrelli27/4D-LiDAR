@@ -45,3 +45,10 @@ def padding_nan(data):
             continue
         data[i] = np.concatenate([l, [np.nan] * (maxlen - len(l))])
     return np.array(data)
+
+def R_to_axis_angle(R):
+    angle = np.arccos((np.trace(R) - 1) / 2)
+    axis = 1/(2*np.sin(angle))*np.array([R[2,1]-R[1,2],
+                                       R[0,2]-R[2,0],
+                                       R[1,0]-R[0,1]])
+    return (axis, angle)

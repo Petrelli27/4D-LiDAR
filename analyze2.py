@@ -189,8 +189,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-# with open('sim_kompsat670.pickle', 'rb') as sim_data:
-with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+with open('sim_kompsat670.pickle', 'rb') as sim_data:
+# with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
 # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
@@ -245,7 +245,7 @@ p = 0.007
 om = 0.001
 p1 = 0.008
 q = 0.04
-R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+R1 = np.diag([p, p, p, om, om, 0.1*om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om])
 
 # Measurement matrix
@@ -330,18 +330,20 @@ for i in range(nframes):
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         errors.append(np.rad2deg(error))
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
+    LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+    L = LWD[0]; W = LWD[1]; D = LWD[2]
+    predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
     if i==0 or (not bad_attitude_measurement_flag):
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
         associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
         z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
     else:
-        LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
-        L = LWD[0]; W = LWD[1]; D = LWD[2]
-        associatedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
+        print(f"bad attitude at t={i*dt}")
+        associatedBbox = predictedBbox
         z_p1_k = associatedBbox[:,0]
 
-    if i>0 and (abs(i-240)<20) and i%5==0:
+    if i>0 and (abs(i-100)<100) and i%3==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -372,7 +374,9 @@ for i in range(nframes):
         # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
         #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
-
+        drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
+                      predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+        
         Rot_measured = quat2rotm(z_q_k)
 
         R_estimated = quat2rotm(q_kp1)
@@ -466,6 +470,30 @@ for i in range(nframes):
         else:
             omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
         omega_los_L = Rot_B_to_L[i]@omega_los_B_averaged
+    
+    # 3b Kabsch alternate
+    # this should be done in the B frame
+    # omega_los_Ls = np.zeros([n_moving_average, 3])
+    # if i==0:
+    #     omega_los_L = np.array([0,0,0])
+    # else:
+    #     prev_q = z_s[i-1][9:]
+    #     cur_q = z_q_k
+    #     prev_R_in_B = Rot_L_to_B[i] @ quat2rotm(prev_q)
+    #     cur_R_in_B = Rot_L_to_B[i] @ quat2rotm(cur_q)
+    #     prev_R_in_B_after_LLS = prev_R_in_B @ rodrigues(omega_LLS_B, dt)
+    #     net_R_in_B = (prev_R_in_B_after_LLS.T) @ (cur_R_in_B)
+    #     rotation_axis_bbox, rotation_angle_bbox = R_to_axis_angle(net_R_in_B)
+    #     omega_bbox = rotation_axis_bbox * rotation_angle_bbox / dt
+    #     # take only the z_component (along LOS) of omega_bbox
+    #     omega_los_B_q = np.array([0,0,omega_bbox[2]])
+    #     omega_los_L_q = (Rot_B_to_L[i] @ omega_los_B_q.reshape([3,1])).reshape(3)
+    #     omega_los_Ls[i%n_moving_average] = omega_los_L_q
+    #     if i < n_moving_average:
+    #         omega_los_L_averaged = np.mean(omega_los_Ls[0:i+1], axis=0)
+    #     else:
+    #         omega_los_L_averaged = np.mean(omega_los_Ls, axis=0)
+        
 
     # Combine angular velocity estimates
     if i == 0:
@@ -478,7 +506,7 @@ for i in range(nframes):
 
     # Compute Measurement Vector
     if bad_attitude_measurement_flag:
-        z_kp1 = np.hstack([z_p_k, z_omega_k])
+        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
 

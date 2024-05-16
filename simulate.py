@@ -43,7 +43,7 @@ R = 670 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([1, 1, 1]) # inertial, unchanging angular velocity of debris
+omega_L = np.array([0, 0, 1]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
@@ -172,6 +172,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim_kompsat_neg_om_long.pickle', 'wb') as sim_data:
+with open('sim_kompsat_z_rotation_only.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 
