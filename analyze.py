@@ -315,7 +315,7 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
 # Process noise covariance matrix
 qpixz = 0.00005
 qpyz = 0.000025
-qpxyz = 0.000000001
+qpxyz = 0.0000001
 qv = 0.0000005
 qom = 0.00005
 Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz,
@@ -656,8 +656,6 @@ z_omegas = np.array(z_omegas)
 z_v_s = np.array((z_v_s))
 
 
-
-"""
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 ax.legend()
@@ -725,7 +723,6 @@ plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Position Error (m)')
 #plt.title('Position Errors')
-"""
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,0] - debris_pos[:, 0], label='Computed', linewidth=1)
@@ -758,7 +755,7 @@ plt.ylabel('$\displaystyle p_z$ (m)')
 #plt.title('Z Position')
 plt.show()
 
-"""
+
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_v_s[:,0] - debris_vel[:,0], label='Error $\displaystyle v_{Tx}$', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), z_v_s[:,1] - debris_vel[:,1], label='Error $\displaystyle v_{Ty}$', linewidth=1)
@@ -817,4 +814,3 @@ plt.ylabel('Angular velocity (rad/s)')
 plt.title('$\displaystyle {}^B \Omega_z$ from Kabsch')
 
 plt.show()
-"""

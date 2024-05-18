@@ -256,7 +256,7 @@ def verticeupdate(dt, x_k):
     return p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, R_k_kp1
 
 
-def remove_bias(z_p_k, start_t, curr_i, start_t2, dt, y, estimated, R_i, num_sinusoids, freq_threshold, freq_skip):
+def remove_bias(z_p_k, start_t, curr_i, dt, y, estimated, R_i_L_to_B, R_i_B_to_L, num_sinusoids, freq_threshold, freq_skip):
     def sum_of_sinusoids(t_fit, *params_fit):
         y_fit = np.zeros_like(t_fit)
         for i in range(num_sinusoids):
@@ -301,16 +301,16 @@ def remove_bias(z_p_k, start_t, curr_i, start_t2, dt, y, estimated, R_i, num_sin
     top_magnitudes = peak_magnitudes[top_peak_indices]
 
     # Plot the frequency spectrum
-    plt.figure()
-    plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
+    # plt.figure()
+    # plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
 
     # Highlight the top three peaks
-    plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top 3 peaks')
+    # plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top 3 peaks')
 
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Magnitude')
-    plt.title('Frequency Spectrum')
-    plt.legend()
+    # plt.xlabel('Frequency (Hz)')
+    # plt.ylabel('Magnitude')
+    # plt.title('Frequency Spectrum')
+    # plt.legend()
 
     initial_amplitude = max(y) - min(y)
     initial_phase = 0
@@ -332,28 +332,20 @@ def remove_bias(z_p_k, start_t, curr_i, start_t2, dt, y, estimated, R_i, num_sin
     params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
 
     # correct bias
-    fitted_z = sum_of_sinusoids(t, *params)
-
-    # bias at current time step
-
-    # is it fait to assume that bias one time interval is bias now?
-    index = int(((curr_i * dt) % time_interval) / dt) - int(start_t2 / dt)
-    fitted_z_i = fitted_z[index]
+    bias_z = sum_of_sinusoids(curr_i * dt, *params)
 
     # Plot the original data and the fitted function
-    plt.figure()
-    plt.scatter(t, y, s=1, label='Data')
-    plt.scatter(t[index], fitted_z_i)
-    plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
-    plt.legend()
-    plt.show()
+    # plt.figure()
+    # plt.scatter(t, y, s=1, label='Data')
+    # plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
+    # plt.legend()
+    # plt.show()
 
+    z_p_k_B = R_i_L_to_B @ z_p_k
+    z_p_k_B[2] = z_p_k_B[2] - bias_z #+ np.mean(estimated)
+    z_p_k_L = R_i_B_to_L @ z_p_k_B
 
-
-
-
-
-    return z_p_k
+    return z_p_k_L
 
 
 
@@ -431,7 +423,7 @@ om = 0.25
 vn = 0.01
 pxyz = 0.05
 pyy = 0.05
-R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
+R = np.diagdf([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
                pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 #R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
  #              pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
@@ -562,10 +554,9 @@ for i in range(nframes):
             estimated = estimated[int(interval_time / dt):, 2]
 
         thresh = 0.2  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-        num_sin = 8  # number of sinusoids to use to fit the data
-        skip = 2  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-        z_p_k = remove_bias(z_p_k, interval_time, i, t_start, dt, z, estimated, Rot_B_to_L[i], num_sin, thresh, skip)
-
+        num_sin = 4  # number of sinusoids to use to fit the data
+        skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
+        z_p_k = remove_bias(z_p_k, t_start, i, dt, z, estimated, Rot_L_to_B[i], Rot_B_to_L[i], num_sin, thresh, skip)
     #####################
 
     # Vertice association
