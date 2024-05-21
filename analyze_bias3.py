@@ -11,6 +11,13 @@ from associationdata import nearest_search
 import pickle
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
+from scipy.optimize import least_squares
+
+# Define a residual function for least_squares
+def residuals(params, t, y):
+    return y - sum_of_sinusoids(t, *params)
+
+
 
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
@@ -255,21 +262,23 @@ def verticeupdate(dt, x_k):
 
     return p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, R_k_kp1
 
+def sum_of_sinusoids(t_fit, *params_fit):
+    y_fit = np.zeros_like(t_fit)
+    num_sinusoids = (len(params_fit) - 2) // 2
+    for i in range(num_sinusoids):
+        A = params_fit[0]
+        omega = params_fit[2*i + 2]
+        phi = params_fit[1]
+        C = params_fit[2*i + 3]
+        y_fit += A * np.sin(omega * t_fit + phi) + C
+    return y_fit
 
-def remove_bias(z_p_k, start_t, curr_i, dt, y, estimated, R_i_L_to_B, R_i_B_to_L, num_sinusoids, freq_threshold, freq_skip):
-    def sum_of_sinusoids(t_fit, *params_fit):
-        y_fit = np.zeros_like(t_fit)
-        for i in range(num_sinusoids):
-            A = params_fit[2 * i + 3]
-            omega = params_fit[2 * i + 2]
-            phi = params_fit[0]
-            C = params_fit[1]
-            y_fit += A * np.sin(omega * t_fit + phi) + C
-        return y_fit
+
+def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_skip, true, params_ini):
 
     nframes = len(y)
     time_interval = (nframes - 1) * dt
-
+    y_orig = y.copy()
     t = np.linspace(start=start_t, stop=start_t + time_interval, num=nframes)
     y = y - estimated
 
@@ -301,16 +310,13 @@ def remove_bias(z_p_k, start_t, curr_i, dt, y, estimated, R_i_L_to_B, R_i_B_to_L
     top_magnitudes = peak_magnitudes[top_peak_indices]
 
     # Plot the frequency spectrum
-    # plt.figure()
-    # plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
-
-    # Highlight the top three peaks
-    # plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top 3 peaks')
-
-    # plt.xlabel('Frequency (Hz)')
-    # plt.ylabel('Magnitude')
-    # plt.title('Frequency Spectrum')
-    # plt.legend()
+    plt.figure()
+    plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
+    plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top peaks')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.title('Frequency Spectrum')
+    plt.legend()
 
     initial_amplitude = max(y) - min(y)
     initial_phase = 0
@@ -318,31 +324,51 @@ def remove_bias(z_p_k, start_t, curr_i, dt, y, estimated, R_i_L_to_B, R_i_B_to_L
     initial_frequencies = top_frequencies
 
     initial_guess = []
-    for i in range(0, num_sinusoids):
-        if i == 0:
-            initial_guess.append(initial_phase)
-            initial_guess.append(initial_constant)
-            initial_guess.append(initial_frequencies[i])
-            initial_guess.append(initial_amplitude)
-        else:
-            initial_guess.append(initial_frequencies[i])
-            initial_guess.append(initial_amplitude)
+    if len(params_ini) == 0:
+        for index in range(0, num_sinusoids):
+            if index == 0:
+                initial_guess.append(initial_amplitude)
+                initial_guess.append(initial_phase)
+                initial_guess.append(initial_frequencies[index])
+                initial_guess.append(initial_constant)
+            else:
+                initial_guess.append(initial_frequencies[index])
+                initial_guess.append(initial_constant)
+    else:
+        initial_guess = params_ini
 
     # Perform the curve fitting
     params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
 
+    # Fit the model using least_squares
+    # result = least_squares(residuals, initial_guess, args=(t, y), max_nfev=10000)
+    # params = result.x
+
+    plt.figure()
+    plt.scatter(t, y_orig - true, s=1, label='Data')
+    plt.plot(t, sum_of_sinusoids(t, *params))
+    plt.plot(t, sum_of_sinusoids(t, *params) + estimated - true, label='Fitted sum of sinusoids', color='red')
+    plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated, s=1, label='Bias corrected', color='orange')
+    plt.plot(t, estimated - true, label='Estimated', linestyle='--', color='green')
+    plt.legend()
+
+    plt.figure()
+    t = np.arange(0., 1000., .05)
+    plt.plot(t, sum_of_sinusoids(t, *params))
+    plt.show()
+
+    return params
+
+
+def correct_bias(z_p_k_meas, curr_i, dt_here, parameters_x, parameters_y, parameters_z, R_i_L_to_B, R_i_B_to_L):
     # correct bias
-    bias_z = sum_of_sinusoids(curr_i * dt, *params)
-
-    # Plot the original data and the fitted function
-    # plt.figure()
-    # plt.scatter(t, y, s=1, label='Data')
-    # plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
-    # plt.legend()
-    # plt.show()
-
-    z_p_k_B = R_i_L_to_B @ z_p_k
-    z_p_k_B[2] = z_p_k_B[2] - bias_z #+ np.mean(estimated)
+    bias_z = sum_of_sinusoids(curr_i * dt_here, *parameters_z)
+    bias_y = sum_of_sinusoids(curr_i * dt_here, *parameters_y)
+    bias_x = sum_of_sinusoids(curr_i * dt_here, *parameters_x)
+    z_p_k_B = R_i_L_to_B @ z_p_k_meas
+    z_p_k_B[2] = z_p_k_B[2] - bias_z
+    z_p_k_B[0] = z_p_k_B[0] - bias_x
+    z_p_k_B[1] = z_p_k_B[1] - bias_y
     z_p_k_L = R_i_B_to_L @ z_p_k_B
 
     return z_p_k_L
@@ -411,7 +437,7 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
 # Process noise covariance matrix
 qpixz = 0.00005
 qpyz = 0.000025
-qpxyz = 0.0000001
+qpxyz = 0.000000001
 qv = 0.0000005
 qom = 0.00005
 Q = np.diag([qpxyz, qpxyz, qpxyz, qv, qv, qv, qom, qom, qom, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz, qpixz, qpyz, qpixz,
@@ -423,7 +449,7 @@ om = 0.25
 vn = 0.01
 pxyz = 0.05
 pyy = 0.05
-R = np.diagdf([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
+R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
                pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 #R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
  #              pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
@@ -461,6 +487,11 @@ estimated_pos = [p_0]
 # ax.set_ylabel('y')
 # ax.set_zlabel('z')
 interval_time = 0  # for bias part
+done = 0
+params_x = []
+params_y = []
+params_z = []
+
 n_moving_average = 100
 settling_time = 500
 omega_kabsch_b = np.zeros((nframes, 3))
@@ -548,15 +579,25 @@ for i in range(nframes):
             interval_time = curr_t - t_interval
             z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
             z = np.array(z_in_b)
-            z = z[int(interval_time / dt):, 2]
+            z = z[int(interval_time / dt):, :]
             estimated_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(estimated_pos)])
             estimated = np.array(estimated_inB)
-            estimated = estimated[int(interval_time / dt):, 2]
+            estimated = estimated[int(interval_time / dt):, :]
+            true_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(debris_pos)])
+            true = np.array(true_inB)
+            true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
 
-        thresh = 0.2  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-        num_sin = 4  # number of sinusoids to use to fit the data
-        skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-        z_p_k = remove_bias(z_p_k, t_start, i, dt, z, estimated, Rot_L_to_B[i], Rot_B_to_L[i], num_sin, thresh, skip)
+            thresh = 0.05  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
+            num_sin = 4  # number of sinusoids to use to fit the data
+            skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
+            params_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+            params_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
+            params_y = remove_bias(interval_time, dt, z[:, 1], estimated[:, 1], num_sin, thresh, skip, true[:, 1], params_y)
+
+        # z_p_k_x = correct_bias(i, dt, params_x, Rot_L_to_B[i], Rot_B_to_L[i], 'x')
+        # z_p_k_y = correct_bias(i, dt, params_y, Rot_L_to_B[i], Rot_B_to_L[i], 'y')
+        z_p_k_z = correct_bias(z_p_k_meas=z_p_k, curr_i=i, dt_here=dt, parameters_z=params_z, parameters_y=params_y, parameters_x=params_x, R_i_L_to_B=Rot_L_to_B[i], R_i_B_to_L=Rot_B_to_L[i])
+        z_p_k = z_p_k_z
     #####################
 
     # Vertice association
@@ -730,27 +771,7 @@ z_p_s = np.array(z_p_s)
 z_omegas = np.array(z_omegas)
 z_v_s = np.array((z_v_s))
 x_s = np.array(x_s)
-
-x_rmse = np.sqrt(np.mean(np.square(debris_pos[:,0] - z_p_s[:len(debris_pos),0])))
-y_rmse = np.sqrt(np.mean(np.square(debris_pos[:,1] - z_p_s[:len(debris_pos),1])))
-z_rmse = np.sqrt(np.mean(np.square(debris_pos[:,2] - z_p_s[:len(debris_pos),2])))
-stdx = np.std(debris_pos[:,0] - z_p_s[:len(debris_pos),0])
-stdy = np.std(debris_pos[:,1] - z_p_s[:len(debris_pos),1])
-stdz = np.std(debris_pos[:,2] - z_p_s[:len(debris_pos),2])
-
-omegax_rmse = np.sqrt(np.mean(np.square(z_omegas[:,0] - 1)))
-omegay_rmse = np.sqrt(np.mean(np.square(z_omegas[:,1] - 1)))
-omegaz_rmse = np.sqrt(np.mean(np.square(z_omegas[:,2] - 1)))
-stdomegax = np.std(z_omegas[:,0] - 1)
-stdomegay = np.std(z_omegas[:,1] - 1)
-stdomegaz = np.std(z_omegas[:,2] - 1)
-
-vx_rmse = np.sqrt(np.mean(np.square(z_v_s[:,0] - debris_vel[:,0])))
-vy_rmse = np.sqrt(np.mean(np.square(z_v_s[:,1] - debris_vel[:,1])))
-vz_rmse = np.sqrt(np.mean(np.square(z_v_s[:,2] - debris_vel[:,2])))
-stdvx = np.std(z_v_s[:,0] - debris_vel[:,0])
-stdvy = np.std(z_v_s[:,1] - debris_vel[:,1])
-stdvz = np.std(z_v_s[:,2] - debris_vel[:,2])
+original_pos_meas = np.array(original_pos_meas)
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
@@ -824,20 +845,23 @@ plt.ylabel('Position Error (m)')
 #plt.title('Position Errors')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,0], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,0] - debris_pos[:,0], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 0] - debris_pos[:,0], label='Original', linewidth=1)
 
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0] - debris_pos[:,0], label='Estimated', linewidth=2)
 
-plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle p_x$ (m)')
 #plt.title('X Position')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,1], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,1] - debris_pos[:,1], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 1] - debris_pos[:,1], label='Original', linewidth=1)
+
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Estimated', linewidth=2)
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
 
 plt.legend()
 plt.xlabel('Time (s)')
@@ -845,9 +869,11 @@ plt.ylabel('$\displaystyle p_y$ (m)')
 #plt.title('Y Position')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,2], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,2], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), z_p_s[1:,2] - debris_pos[:,2], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,2] - debris_pos[:,2], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 2] - debris_pos[:,2], label='Original', linewidth=1)
+
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle p_z$ (m)')
