@@ -133,7 +133,7 @@ def orientation_measure(z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, 
     
     dx = z_p4_k - z_p1_k
     dy = z_p2_k - z_p1_k
-    dz = z_p5_k - z_p1_k
+    dz = np.cross(dx, dy)
     x_unit = dx/np.linalg.norm(dx)
     y_unit = dy/np.linalg.norm(dy)
     z_unit = dz/np.linalg.norm(dz)
@@ -558,7 +558,7 @@ for i in range(nframes):
         # ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
         # ax.add_collection3d(mplot3d.art3d.Poly3DCollection(debris.vectors, alpha=0.3))
         # drawrectangle(ax, z_pi_k[:,0], z_pi_k[:,1], z_pi_k[:,2], z_pi_k[:,3], z_pi_k[:,4], z_pi_k[:,5], z_pi_k[:,6], z_pi_k[:,7], 'b')
-        if i > 1000 and i % 10 == 0:
+        if i > 1000 and i % 500 == 0:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
             ax.legend()
@@ -669,7 +669,7 @@ for i in range(nframes):
             # Calculate the Kalman gain
             K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
 
-            print(K_kp1[36, :])
+            # print(K_kp1[36, :])
 
             # Calculate Residual
             res_kp1 = z_kp1 - np.matmul(H, x_kp1)
