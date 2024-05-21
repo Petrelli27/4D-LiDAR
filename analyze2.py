@@ -330,9 +330,10 @@ for i in range(nframes):
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         errors.append(np.rad2deg(error))
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
-    LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
-    L = LWD[0]; W = LWD[1]; D = LWD[2]
-    predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
+    if i>0:
+        LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+        L = LWD[0]; W = LWD[1]; D = LWD[2]
+        predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
     if i==0 or (not bad_attitude_measurement_flag):
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
