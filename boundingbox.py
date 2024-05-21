@@ -1,3 +1,4 @@
+from mytools import *
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
@@ -134,33 +135,54 @@ def bbox3d(x, y, z, return_evec=False):
     
 def associated(z_q_k, z_pi_k, z_p_k, R_1):
 
-    # rotate z_pi_k by R_1
+    # rotate z_pi_k by R (after bbox association)
     # find xmin ymin zmin
     # this is z_p1_k
-    R = Rotation.from_quat(z_q_k)
-    R_matrix = R.as_matrix()
+    R = quat2rotm(z_q_k)
     centered_coords = z_pi_k - np.array(z_p_k).reshape((3,1))
-    aligned_coords = R_matrix.T @ centered_coords
+    aligned_coords = R.T @ centered_coords
 
-    for i, point in enumerate(aligned_coords.T):
+    ref_points = np.array([[-1,-1,-1],
+                          [-1,1,-1],
+                          [1,1,-1],
+                          [1,-1,-1],
+                          [-1,-1,1],
+                          [-1,1,1],
+                          [1,1,1],
+                          [1,-1,1]])
+    match_indices = []
+    for i, ref_point in enumerate(ref_points):
+        match_indices.append(np.argmin(np.linalg.norm(aligned_coords.T - ref_point, axis=1)))
+    z_p1_k = aligned_coords.T[match_indices[0]]
+    z_p2_k = aligned_coords.T[match_indices[1]]
+    z_p3_k = aligned_coords.T[match_indices[2]]
+    z_p4_k = aligned_coords.T[match_indices[3]]
+    z_p5_k = aligned_coords.T[match_indices[4]]
+    z_p6_k = aligned_coords.T[match_indices[5]]
+    z_p7_k = aligned_coords.T[match_indices[6]]
+    z_p8_k = aligned_coords.T[match_indices[7]] 
 
-        x, y, z = point
-        if x < 0 and y < 0 and z < 0:
-            z_p1_k = z_pi_k[:, i]
-        elif x < 0 and y > 0 and z < 0:
-            z_p2_k = z_pi_k[:, i]
-        elif x > 0 and y > 0  and z < 0:
-            z_p3_k = z_pi_k[:, i]
-        elif x > 0 and y < 0 and z < 0:
-            z_p4_k = z_pi_k[:, i]
-        elif x < 0 and y < 0 and z > 0:
-            z_p5_k = z_pi_k[:, i]
-        elif x < 0 and y > 0 and z > 0:
-            z_p6_k = z_pi_k[:, i]
-        elif x > 0 and y > 0 and z > 0:
-            z_p7_k = z_pi_k[:, i]
-        else:
-            z_p8_k = z_pi_k[:, i]
+    # for i, point in enumerate(aligned_coords.T):
+
+
+    #     x, y, z = point
+    #     if x < 0 and y < 0 and z < 0:
+    #         z_p1_k = point
+    #     elif x < 0 and y > 0 and z < 0:
+    #         z_p2_k = point
+    #     elif x > 0 and y > 0  and z < 0:
+    #         z_p3_k = point
+    #     elif x > 0 and y < 0 and z < 0:
+    #         z_p4_k = point
+    #     elif x < 0 and y < 0 and z > 0:
+    #         z_p5_k = point
+    #     elif x < 0 and y > 0 and z > 0:
+    #         z_p6_k = point
+    #     elif x > 0 and y > 0 and z > 0:
+    #         z_p7_k = point
+    #     else:
+    #         z_p8_k = point
+
 
     aligned_coords_final = np.array([z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).T
 
@@ -174,9 +196,23 @@ def associated(z_q_k, z_pi_k, z_p_k, R_1):
     W = ymax - ymin
     H = zmax - zmin
 
-    associatedBbox = aligned_coords_final + np.array(z_p_k).reshape((3, 1))
+    associatedBbox = R@aligned_coords_final + np.array(z_p_k).reshape((3, 1))
 
-    return z_pi_k.copy(), L, W, H
+    return associatedBbox, L, W, H
+
+def from_params(p, q, length, width, height):
+    R = quat2rotm(q)
+    vertices = np.array([
+        [-length / 2, -width / 2, -height / 2],
+        [-length / 2, width / 2, -height / 2],
+        [length / 2, -width / 2, -height / 2],
+        [length / 2, width / 2, -height / 2],
+        [-length / 2, -width / 2, height / 2],
+        [-length / 2, width / 2, height / 2],
+        [length / 2, -width / 2, height / 2],
+        [length / 2, width / 2, height / 2]])
+    bbox = (R @ vertices.T) + p.reshape(3,1) # rotate and move
+    return bbox
 
 
 

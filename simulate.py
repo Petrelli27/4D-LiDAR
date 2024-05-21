@@ -43,11 +43,11 @@ R = 670 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([1, 1, 1]) # inertial, unchanging angular velocity of debris
+omega_L = np.array([0, 0, 1]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
-nframes = 100
+nframes = 2000
 dt = 0.05
 
 # simulate debris velocity (linear and angular) in {L} frame from dynamics
@@ -57,9 +57,9 @@ debris_vel = np.vstack([vx,vy,vz]).T
 # specify Lidar resolution and range
 # LiDAR point cloud generation initializations
 ang_res = 0.025  # angular resolution of Aeries 2 LiDAR
-h_resolution = 40  # Number of rays horizontally
-v_resolution = 40  # Number of rays vertically
-res_box = 5.5
+# h_resolution = 40  # Number of rays horizontally
+# v_resolution = 40  # Number of rays vertically
+res_box = 7
 # h_range = 120  # Vertical lidar angle range in degrees
 # v_range = 60  # Horizontal lidar angle range in degrees
 
@@ -85,8 +85,8 @@ for i in range(nframes):
     print("Current iteration: " + str(i))
 
     fov = np.rad2deg(2*np.arctan2(res_box / 2, d[i]))
-    h_resolution = int(fov / ang_res) if fov < 1 else 40
-    v_resolution = int(fov / ang_res) if fov < 1 else 40
+    h_resolution = min(int(fov / ang_res),60)
+    v_resolution = min(int(fov / ang_res),60)
     h_range = fov  # Vertical lidar angle range in degrees
     v_range = fov  # Horizontal lidar angle range in degrees
 
@@ -172,6 +172,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim_kompsat_neg_om.pickle', 'wb') as sim_data:
+with open('sim_kompsat_z_rotation_only.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 
