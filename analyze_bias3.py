@@ -309,15 +309,6 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
     top_frequencies = peak_frequencies[top_peak_indices]
     top_magnitudes = peak_magnitudes[top_peak_indices]
 
-    # Plot the frequency spectrum
-    plt.figure()
-    plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
-    plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top peaks')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Magnitude')
-    plt.title('Frequency Spectrum')
-    plt.legend()
-
     initial_amplitude = max(y) - min(y)
     initial_phase = 0
     initial_constant = max(y)
@@ -339,36 +330,62 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
 
     # Perform the curve fitting
     params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
+    constant = max(sum_of_sinusoids(t, *params))
+    # print(constant)
 
     # Fit the model using least_squares
     # result = least_squares(residuals, initial_guess, args=(t, y), max_nfev=10000)
     # params = result.x
 
+    # Plot the frequency spectrum
     plt.figure()
-    plt.scatter(t, y_orig - true, s=1, label='Data')
+    plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
+    plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top peaks')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Magnitude')
+    plt.title('Frequency Spectrum')
+    plt.legend()
+
+    # with respect to true
+    plt.figure()
+    plt.scatter(t, y_orig - true, s=3, label='Data')
     plt.plot(t, sum_of_sinusoids(t, *params))
     plt.plot(t, sum_of_sinusoids(t, *params) + estimated - true, label='Fitted sum of sinusoids', color='red')
-    plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated, s=1, label='Bias corrected', color='orange')
+    plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - true + constant, s=3, label='Bias corrected', color='orange')
     plt.plot(t, estimated - true, label='Estimated', linestyle='--', color='green')
     plt.legend()
 
+    # with respect to estimated
+    plt.figure()
+    plt.scatter(t, y_orig - estimated, s=3, label='Data')
+    plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
+    plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated + constant, s=3, label='Bias corrected', color='orange')
+    plt.plot(t, true - estimated, label='True', linestyle='--', color='green')
+    plt.legend()
+    #
+    # print(np.mean(y_orig - true))
+    # print(np.mean(y_orig - (sum_of_sinusoids(t, *params)) - true))
+    # print(np.mean(y_orig - sum_of_sinusoids(t, *params) - estimated))
+
+
+    #
     plt.figure()
     t = np.arange(0., 1000., .05)
     plt.plot(t, sum_of_sinusoids(t, *params))
     plt.show()
 
-    return params
+    return params, constant
 
 
-def correct_bias(z_p_k_meas, curr_i, dt_here, parameters_x, parameters_y, parameters_z, R_i_L_to_B, R_i_B_to_L):
+def correct_bias(z_p_k_meas, curr_i, dt_here, parameters, constants, R_i_L_to_B, R_i_B_to_L):
     # correct bias
-    bias_z = sum_of_sinusoids(curr_i * dt_here, *parameters_z)
-    bias_y = sum_of_sinusoids(curr_i * dt_here, *parameters_y)
-    bias_x = sum_of_sinusoids(curr_i * dt_here, *parameters_x)
+    bias_z = sum_of_sinusoids(curr_i * dt_here, *parameters[2])
+    bias_y = sum_of_sinusoids(curr_i * dt_here, *parameters[1])
+    bias_x = sum_of_sinusoids(curr_i * dt_here, *parameters[0])
     z_p_k_B = R_i_L_to_B @ z_p_k_meas
-    z_p_k_B[2] = z_p_k_B[2] - bias_z
-    z_p_k_B[0] = z_p_k_B[0] - bias_x
-    z_p_k_B[1] = z_p_k_B[1] - bias_y
+    z_p_k_B[2] = z_p_k_B[2] + constants[2]
+    # z_p_k_B[0] = z_p_k_B[0] - bias_x
+    # z_p_k_B[1] = z_p_k_B[1] - bias_y
     z_p_k_L = R_i_B_to_L @ z_p_k_B
 
     return z_p_k_L
@@ -379,7 +396,7 @@ def correct_bias(z_p_k_meas, curr_i, dt_here, parameters_x, parameters_y, parame
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_kompsat670.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -491,6 +508,8 @@ done = 0
 params_x = []
 params_y = []
 params_z = []
+centroids_inB = []
+true_pos_inB = []
 
 n_moving_average = 100
 settling_time = 500
@@ -569,13 +588,16 @@ for i in range(nframes):
     # bias removal
     ############
     original_pos_meas.append(z_p_k)
+    centroids_inB.append(Rot_L_to_B[i] @ z_p_k)
+    true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
+
     curr_t = i * dt
-    t_start = 10  # when the first bias calculation should be initiated
+    t_start = 20  # when the first bias calculation should be initiated
     t_interval = 20  # how many seconds of data should be collected each time
 
     # grab data every interval
     if curr_t >= (t_start + t_interval):
-        if (curr_t + t_start) % t_interval == 0:  # grab new data
+        if (curr_t + t_start) % t_interval == 0 and done == 0:  # grab new data
             interval_time = curr_t - t_interval
             z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
             z = np.array(z_in_b)
@@ -588,15 +610,18 @@ for i in range(nframes):
             true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
 
             thresh = 0.05  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-            num_sin = 4  # number of sinusoids to use to fit the data
+            num_sin = 7  # number of sinusoids to use to fit the data
             skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-            params_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
-            params_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
-            params_y = remove_bias(interval_time, dt, z[:, 1], estimated[:, 1], num_sin, thresh, skip, true[:, 1], params_y)
+            params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+            # params_x, constant_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
+            # params_y, constant_y = remove_bias(interval_time, dt, z[:, 1], estimated[:, 1], num_sin, thresh, skip, true[:, 1], params_y)
+            parameters = [params_x, params_y, params_z]
 
-        # z_p_k_x = correct_bias(i, dt, params_x, Rot_L_to_B[i], Rot_B_to_L[i], 'x')
-        # z_p_k_y = correct_bias(i, dt, params_y, Rot_L_to_B[i], Rot_B_to_L[i], 'y')
-        z_p_k_z = correct_bias(z_p_k_meas=z_p_k, curr_i=i, dt_here=dt, parameters_z=params_z, parameters_y=params_y, parameters_x=params_x, R_i_L_to_B=Rot_L_to_B[i], R_i_B_to_L=Rot_B_to_L[i])
+            constants = [0, 0, constant_z]
+            done = 1
+            print(constants)
+
+        z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
         z_p_k = z_p_k_z
     #####################
 
@@ -772,6 +797,8 @@ z_omegas = np.array(z_omegas)
 z_v_s = np.array((z_v_s))
 x_s = np.array(x_s)
 original_pos_meas = np.array(original_pos_meas)
+centroids_inB = np.array(centroids_inB)
+true_pos_inB = np.array(true_pos_inB)
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
@@ -794,6 +821,22 @@ ax.set_zlim(-20,-9)
 
 
 m1 = len(x_s)
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 0] - true_pos_inB[:, 0])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_x$ (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 1] - true_pos_inB[:, 1])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_y$ (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 2] - true_pos_inB[:, 2])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_z$ (m)')
+
 # print(m1)
 
 fig = plt.figure()
