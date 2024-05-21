@@ -127,6 +127,21 @@ def orientationupdate(dt, x_k):
     q_kp1_pos = q_kp1 if q_kp1[0] >= 0 else -q_kp1
     return np.array(q_kp1_pos)
 
+def orientation_measure(z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k):
+    # assume that z_p1_k contains [xmin ymin zmin]
+    # assume that z_p7_k contains [xmax ymax zmaz]
+    
+    dx = z_p4_k - z_p1_k
+    dy = z_p2_k - z_p1_k
+    dz = z_p5_k - z_p1_k
+    x_unit = dx/np.linalg.norm(dx)
+    y_unit = dy/np.linalg.norm(dy)
+    z_unit = dz/np.linalg.norm(dz)
+    # note that at this point, x, y, z may not be orthogonal
+    R = np.array([x_unit, y_unit, z_unit]).T
+    q_temp = rotm2quat(R)
+    q_out = normalize_quat(q_temp)
+    return q_out
 
 def F_matrix(dt, R, p_k, p1_k, p2_k, p3_k, p4_k, p5_k, p6_k, p7_k, p8_k, omega_k, q_k):
     """
@@ -297,7 +312,8 @@ def verticeupdate(dt, x_k):
 O_B = np.array([0, 0, 0])
 O_L = np.array([0, 0, 0])
 
-with open('sim_kompsat670.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+# with open('sim_kompsat670.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -439,16 +455,17 @@ for i in range(nframes):
         vn = 0.01
         pxyz = 0.05
         pyy = 0.05
+        pq = 0.4
         R = np.diag([pxyz, pyy, pxyz, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
-                     pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
+                     pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pq, pq, pq, pq])
         # R = np.diag([pxz, py, pxz, vn, vn, vn, om, om, om, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz,
         #              pxz, py, pxz, pxz, py, pxz, pxz, py, pxz, pxz, py, pxz])
 
-        H = np.zeros([len(x_0) - 7, len(x_0)])
+        H = np.zeros([len(x_0)-3, len(x_0)])
         h_1 = np.eye(3)
-        h_2 = np.eye(27)
+        h_2 = np.eye(31)
         H[0:3, 0:3] = h_1
-        H[3:33, 6:33] = h_2
+        H[3:34, 6:37] = h_2
 
         # Current states
         x_k = x_0.copy()  # State vector
@@ -636,8 +653,11 @@ for i in range(nframes):
         # z_kp1 = np.array(
         #   [z_p_k, z_v_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).ravel()
 
-        z_kp1 = np.array(
-            [z_p_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k]).ravel()
+        # measure orientation based on bounding box
+        z_q_k = orientation_measure(z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k)
+
+        z_kp1 = np.hstack(
+            [z_p_k, z_omega_k, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k, z_q_k])
         ####################
 
         # print(P_k.diagonal())

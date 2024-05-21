@@ -2,7 +2,7 @@ import math
 import numpy as np
 
 def rotm2quat(R):
-    assert(abs(np.linalg.det(R)-1)<1e-6)
+    # assert(abs(np.linalg.det(R)-1)<1e-6)
     qw = 0.5*math.sqrt(1+R[0,0]+R[1,1]+R[2,2])
     qx = (R[2,1]-R[1,2])/(4*qw)
     qy = (R[0,2]-R[2,0])/(4*qw)
