@@ -587,6 +587,8 @@ for i in range(nframes):
     ############
     # bias removal
     ############
+
+    """
     original_pos_meas.append(z_p_k)
     centroids_inB.append(Rot_L_to_B[i] @ z_p_k)
     true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
@@ -623,6 +625,7 @@ for i in range(nframes):
 
         z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
         z_p_k = z_p_k_z
+        """
     #####################
 
     # Vertice association

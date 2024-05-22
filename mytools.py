@@ -1,13 +1,37 @@
 import math
 import numpy as np
 
+
 def rotm2quat(R):
-    assert(abs(np.linalg.det(R)-1)<1e-6)
-    qw = 0.5*math.sqrt(1+R[0,0]+R[1,1]+R[2,2])
-    qx = (R[2,1]-R[1,2])/(4*qw)
-    qy = (R[0,2]-R[2,0])/(4*qw)
-    qz = (R[1,0]-R[0,1])/(4*qw)
-    return np.array([qw,qx,qy,qz])
+    # assert(abs(np.linalg.det(R)-1)<1e-6)
+    tr = np.trace(R)
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = R.flatten()
+
+    if tr > 0:
+        S = np.sqrt(tr + 1.0) * 2  # S=4*qw
+        qw = 0.25 * S
+        qx = (m21 - m12) / S
+        qy = (m02 - m20) / S
+        qz = (m10 - m01) / S
+    elif (m00 > m11) & (m00 > m22):
+        S = np.sqrt(1.0 + m00 - m11 - m22) * 2  # S=4*qx
+        qw = (m21 - m12) / S
+        qx = 0.25 * S
+        qy = (m01 + m10) / S
+        qz = (m02 + m20) / S
+    elif m11 > m22:
+        S = np.sqrt(1.0 + m11 - m00 - m22) * 2  # S=4*qy
+        qw = (m02 - m20) / S
+        qx = (m01 + m10) / S
+        qy = 0.25 * S
+        qz = (m12 + m21) / S
+    else:
+        S = np.sqrt(1.0 + m22 - m00 - m11) * 2  # S=4*qz
+        qw = (m10 - m01) / S
+        qx = (m02 + m20) / S
+        qy = (m12 + m21) / S
+        qz = 0.25 * S
+    return np.array([qw, qx, qy, qz])
 
 def quat2rotm(q):
     qw = q[0]

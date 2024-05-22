@@ -55,7 +55,7 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
         source set, based on nearest neighbour search with the L2 norm.
     """
 
-    z_pi_k = z_pi_k.T - z_c_k
+    z_pi_k = z_pi_k.T #- z_c_k
     ec_dist_i = []
     ec_dists = np.zeros([8,8])
     z_pis = np.zeros([8,3])
@@ -79,14 +79,14 @@ def nearest_search(pi_k, z_pi_k, z_c_k):
         ec_dists[pi_idx, :] = 1000
         ec_dists[:, z_idx] = 1000
 
-    z_p1_k = z_pis[0, :] + np.array(z_c_k)
-    z_p2_k = z_pis[1, :] + np.array(z_c_k)
-    z_p3_k = z_pis[2, :] + np.array(z_c_k)
-    z_p4_k = z_pis[3, :] + np.array(z_c_k)
-    z_p5_k = z_pis[4, :] + np.array(z_c_k)
-    z_p6_k = z_pis[5, :] + np.array(z_c_k)
-    z_p7_k = z_pis[6, :] + np.array(z_c_k)
-    z_p8_k = z_pis[7, :] + np.array(z_c_k)
+    z_p1_k = z_pis[0, :] #+ np.array(z_c_k)
+    z_p2_k = z_pis[1, :] #+ np.array(z_c_k)
+    z_p3_k = z_pis[2, :] #+ np.array(z_c_k)
+    z_p4_k = z_pis[3, :] #+ np.array(z_c_k)
+    z_p5_k = z_pis[4, :] #+ np.array(z_c_k)
+    z_p6_k = z_pis[5, :] #+ np.array(z_c_k)
+    z_p7_k = z_pis[6, :] #+ np.array(z_c_k)
+    z_p8_k = z_pis[7, :] #+ np.array(z_c_k)
 
     return z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k
 
