@@ -597,7 +597,7 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k, z_p_k = boundingbox.bbox3d(X_i, Y_i, Z_i)
-    z_p_k = debris_pos[i, :]
+    # z_p_k = debris_pos[i, :]
     ############
     # bias removal
     ############
@@ -653,8 +653,8 @@ for i in range(nframes):
     #ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
     # ax.add_collection3d(mplot3d.art3d.Poly3DCollection(debris.vectors, alpha=0.3))
     # drawrectangle(ax, z_pi_k[:,0], z_pi_k[:,1], z_pi_k[:,2], z_pi_k[:,3], z_pi_k[:,4], z_pi_k[:,5], z_pi_k[:,6], z_pi_k[:,7], 'b')
-    # if False:
-    if i>1000 and i%10 == 0:
+    if False:
+    # if i>1000 and i%10 == 0:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.legend()

@@ -79,6 +79,7 @@ def verticeupdate(dt, x_k):
 
     # Rotation matrix - rodrigues formula
     R_k_kp1 = rodrigues(omega_k, dt)
+    R_k_kp1 = R_k_kp1
 
     # Translate vertex to origin
     p1_ko = p1_k - p_k
@@ -109,7 +110,7 @@ def orientationupdate(dt, x_k):
                           [qy, -qx, qw]]) @ omega_k
     
     q_kp1 = normalize_quat(dqkdt*dt + q_k)
-    q_kp1_pos = q_kp1 if q_kp1[0] >=0 else -q_kp1
+    q_kp1_pos = q_kp1 #if q_kp1[0] >=0 else -q_kp1
     return q_kp1_pos
 
 def F_matrix(dt, R, x_k):
@@ -189,7 +190,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_kompsat670.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
 # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
 # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
@@ -233,20 +234,21 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
 P_k = P_0.copy()  # covariance matrix
 
 # Process noise covariance matrix
-qp = 0.0000025
+qp = 0.000000001
 qv = 0.0000005
-qom = 0.000005
-qp1 = 0.000005
-qq = 0.00005
+qom = 0.00005
+qp1 = 0.00005
+qq = 0.5
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.007
-om = 0.001
-p1 = 0.008
-q = 0.04
-R1 = np.diag([p, p, p, om, om, 0.1*om, p1, p1, p1, q, q, q, q])
-R2 = np.diag([p, p, p, om, om, om])
+p = 0.0005
+om = 0.25
+p1 = 500
+q = 4000
+R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
+
 
 # Measurement matrix
 H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
@@ -254,13 +256,14 @@ H1[0:3,0:3] = np.eye(3)
 H1[3:,6:] = np.eye(10)
 bad_attitude_measurement_flag = False
 
-H2 = np.zeros([6,16])
+H2 = np.zeros([9,16])
 H2[0:3,0:3] = np.eye(3)
 H2[3:6,6:9] = np.eye(3)
+H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
-n_moving_average = 20
-settling_time = 50
+n_moving_average = 100
+settling_time = 500
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -295,6 +298,7 @@ for i in range(nframes):
 
         # Orientation Update
         q_kp1 = orientationupdate(dt, x_k)
+        # q_kp1 = abs(q_kp1)
 
         # Compute Jacobian
         F_kp1 = F_matrix(dt, R_k_kp1, x_k)
@@ -328,23 +332,26 @@ for i in range(nframes):
         z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
     else:
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
+        z_q_k = q_true[i]
         errors.append(np.rad2deg(error))
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    if i==0 or (not bad_attitude_measurement_flag):
+    # if i==0 or (not bad_attitude_measurement_flag):
+    if True:
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
-        associatedBbox, L, W, D = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+        associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
         z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
     else:
         print(f"bad attitude at t={i*dt}")
         associatedBbox = predictedBbox
         z_p1_k = associatedBbox[:,0]
 
-    if i>0 and (abs(i-100)<100) and i%3==0:
+
+    if i>65 and (abs(i-100)<100) and i%100==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -352,7 +359,10 @@ for i in range(nframes):
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_zlabel('z')
-        ax.title.set_text(f'Time={i*dt}s')
+        ax.title.set_text(f'Time={i*dt}s' + '\n' + f'Pred. Length={round(L,2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm,2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
+        # width = orange to green, blue to green
+        # length = orange to cyan, blue to cyan
+        # height = orange to magenta, blue to magenta
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
@@ -368,7 +378,7 @@ for i in range(nframes):
         # print(p7_kp1)
         # print(L, W, D)
 
-
+        # print(x_kp1)
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
         drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
                       associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
@@ -377,6 +387,11 @@ for i in range(nframes):
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
         drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
                       predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+
+        ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
+        ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
+                   label='Vertex 1 Meas.')
+        ax.legend()
         
         Rot_measured = quat2rotm(z_q_k)
 
@@ -506,22 +521,24 @@ for i in range(nframes):
     #################################
 
     # Compute Measurement Vector
-    if bad_attitude_measurement_flag:
-        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+    if False:
+    # if bad_attitude_measurement_flag:
+        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
 
     # Set initial states to measurements
     if i == 0:
-        x_k = np.hstack([z_p_k, z_omega_k, vT_0, z_p1_k, z_q_k])
+        x_k = np.hstack([np.array([-170., -350., -20.]), vT_0, z_omega_k,z_p1_k, z_q_k])
 
     ##############
     # Update - Combine Measurement and Estimates
     ##############
 
     # allow for some time for states to settle
-    if i > 0 and (not bad_attitude_measurement_flag):
-        if bad_attitude_measurement_flag:
+    if i > 0:
+        if False:
+        # if bad_attitude_measurement_flag:
             print(f"Bad attitude at t={i*dt}s")
             H = H2
             R = R2

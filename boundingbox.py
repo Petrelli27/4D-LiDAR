@@ -205,14 +205,11 @@ def from_params(p, q, length, width, height):
     vertices = np.array([
         [-length / 2, -width / 2, -height / 2],
         [-length / 2, width / 2, -height / 2],
-        [length / 2, -width / 2, -height / 2],
         [length / 2, width / 2, -height / 2],
+        [length / 2, -width / 2, -height / 2],
         [-length / 2, -width / 2, height / 2],
         [-length / 2, width / 2, height / 2],
-        [length / 2, -width / 2, height / 2],
-        [length / 2, width / 2, height / 2]])
+        [length / 2, width / 2, height / 2],
+        [length / 2, -width / 2, height / 2]])
     bbox = (R @ vertices.T) + p.reshape(3,1) # rotate and move
     return bbox
-
-
-

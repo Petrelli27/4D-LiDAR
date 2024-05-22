@@ -46,7 +46,7 @@ def quat2rotm(q):
 def normalize_quat(q):
     q_norm = np.linalg.norm(q)
     q_unit = q/q_norm
-    return q_unit if q_unit[0] >= 0 else -q_unit
+    return q_unit #if q_unit[0] >= 0 else -q_unit
 
 def sigmoid(x, a=0.9, k=7):
     s= 1/(1+np.exp(k*(x-a)))
