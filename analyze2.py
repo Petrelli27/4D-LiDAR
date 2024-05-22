@@ -189,8 +189,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-# with open('sim_kompsat670.pickle', 'rb') as sim_data:
-with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+with open('sim_kompsat670.pickle', 'rb') as sim_data:
+# with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
 # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
@@ -330,7 +330,7 @@ for i in range(nframes):
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         errors.append(np.rad2deg(error))
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
-    if i > 0:
+    if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
