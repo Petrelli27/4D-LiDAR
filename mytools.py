@@ -48,6 +48,20 @@ def normalize_quat(q):
     q_unit = q/q_norm
     return q_unit #if q_unit[0] >= 0 else -q_unit
 
+def similar_quat(q1, q_ref):
+    q2 = -q1
+    if np.linalg.norm(q1 - q_ref) < np.linalg.norm(q2 - q_ref):
+        return q1
+    else:
+        return q2
+
+def quat_angle_diff(q1, q2):
+    R1 = quat2rotm(q1)
+    R2 = quat2rotm(q2)
+    R_diff = R1.T @ R2
+    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    return abs(angle_diff)
+
 def sigmoid(x, a=0.9, k=7):
     s= 1/(1+np.exp(k*(x-a)))
     y = -2/math.pi *x + 1
