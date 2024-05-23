@@ -108,10 +108,8 @@ def orientationupdate(dt, x_k):
                           [qw, qz, -qy],
                           [-qz, qw, qx],
                           [qy, -qx, qw]]) @ omega_k
-    
-    q_kp1 = normalize_quat(dqkdt*dt + q_k)
-    q_kp1_pos = q_kp1 #if q_kp1[0] >=0 else -q_kp1
-    return q_kp1_pos
+    q_kp1 = similar_quat(normalize_quat(dqkdt*dt + q_k), q_k)
+    return q_kp1
 
 def F_matrix(dt, R, x_k):
     """
@@ -182,8 +180,15 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
         q_i = rotm2quat(Rot_i @ Rot_0)
-        q_s.append(q_i)
-
+        if i == 0:
+            q_s.append(q_i)
+        else:
+            q_i_alt = -q_i
+            q_prev = q_s[i-1]
+            if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
+                q_s.append(q_i)
+            else:
+                q_s.append(q_i_alt)
     return q_s
 
 # initialize debris position, velocity and orientation
@@ -224,10 +229,11 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [0.5,0.1,-0.5]
+omega_0 = [1,1,1]# [0.5,0.1,-0.5]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+q_true_alt = -q_true
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -243,9 +249,9 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 
 # Measurement noise covariance matrix
 p = 0.0005
-om = 0.25
-p1 = 500
-q = 4000
+om = 0.000025
+p1 = 0.0500
+q = 40000
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -268,6 +274,7 @@ settling_time = 500
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
+bad_orientation_predictions = []
 
 for i in range(nframes):
 
@@ -298,6 +305,7 @@ for i in range(nframes):
 
         # Orientation Update
         q_kp1 = orientationupdate(dt, x_k)
+        q_kp1_true = q_true[i]
         # q_kp1 = abs(q_kp1)
 
         # Compute Jacobian
@@ -332,15 +340,17 @@ for i in range(nframes):
         z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
     else:
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
-        z_q_k = q_true[i]
-        errors.append(np.rad2deg(error))
-    if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
+        prediction_angle_diff = np.rad2deg(quat_angle_diff(z_q_k, q_true[i]))
+        bad_attitude_measurement_flag = (prediction_angle_diff > 25)
+        # z_q_k = q_true[i]; bad_attitude_measurement_flag = False; error = 0 #perfect
+        errors.append(prediction_angle_diff)
+    if i < 40: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    # if i==0 or (not bad_attitude_measurement_flag):
-    if True:
+    if i==0 or (not bad_attitude_measurement_flag):
+    # if True:
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
         associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
@@ -351,7 +361,7 @@ for i in range(nframes):
         z_p1_k = associatedBbox[:,0]
 
 
-    if i>65 and (abs(i-100)<100) and i%100==0:
+    if (abs(i-100)<40) and i%100==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -518,11 +528,12 @@ for i in range(nframes):
         z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
     else:
         z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
+    z_omega_k = np.array([1,1,1]) # debug: use true value of omega
     #################################
 
     # Compute Measurement Vector
-    if False:
-    # if bad_attitude_measurement_flag:
+    # if False:
+    if bad_attitude_measurement_flag:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
@@ -537,8 +548,8 @@ for i in range(nframes):
 
     # allow for some time for states to settle
     if i > 0:
-        if False:
-        # if bad_attitude_measurement_flag:
+        # if False:
+        if bad_attitude_measurement_flag:
             print(f"Bad attitude at t={i*dt}s")
             H = H2
             R = R2
@@ -555,7 +566,7 @@ for i in range(nframes):
 
         # Update State
         x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
-        x_kp1[12:] = normalize_quat(x_kp1[12:])
+        x_kp1[12:] = similar_quat(normalize_quat(x_kp1[12:]), x_k[12:16])
 
         # Update Covariance
         P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
@@ -728,6 +739,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 0], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_0$')
@@ -737,6 +749,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes,1], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 1], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_1$')
@@ -746,6 +759,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 2], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_2$')
@@ -755,6 +769,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 3], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
