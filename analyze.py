@@ -9,6 +9,7 @@ from stl import mesh
 from estimateOmega import estimate_LLS as estimate
 from associationdata import nearest_search
 import pickle
+from  mytools import *
 
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
@@ -253,11 +254,29 @@ def verticeupdate(dt, x_k):
 
     return p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, R_k_kp1
 
+def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
+
+    print(q_ini)
+    Rot_0 = quat2rotm(q_ini)
+
+    # Rot_0 = np.eye(3)
+    # print(Rot_0)
+
+    q_s = []
+    for i in range(len(debris_pos)):
+
+        # get rotation matrix for that timestep
+        Rot_i = rodrigues(omega_true, dt * i)
+        q_i = rotm2quat(Rot_i @ Rot_0)
+        q_s.append(q_i)
+
+    return q_s
+
 # initialize debris position, velocity and orientation
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
 
-with open('sim_kompsat670.pickle', 'rb') as sim_data:
+with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
 XBs = data[0]
 YBs = data[1]
@@ -355,6 +374,8 @@ z_s = []
 x_s = [x_0]
 P_s = []
 centroids_in_B = []
+q_est = []
+calc_true = 0
 
 #print(i)
 # fig = plt.figure()
@@ -444,7 +465,7 @@ for i in range(nframes):
 
     # Vertice association
     pi_pk1 = [p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1]
-    z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k = nearest_search(pi_pk1-p_k-v_k*dt, z_pi_k, z_p_k)
+    z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k = nearest_search(pi_pk1, z_pi_k, z_p_k)
 
 
 
@@ -566,21 +587,6 @@ for i in range(nframes):
     res_kp1 = z_kp1 - np.matmul(H, x_kp1)
     #print(res_kp1)
 
-    if i > 300:
-        if done == 0:
-            if res_kp1[0] > 0:
-                pass
-            else:
-                R[0, 0] = 1e-3 * R[0, 0]
-                done = 1
-        if res_kp1[1] > 0:
-            pass
-        else:
-            R[1, 1] = 1e-3 * R[1, 1]
-        if res_kp1[2] > 0:
-            pass
-        else:
-            R[2, 2] = 1e-3 * R[2, 2]
 
     # Update State
     x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
@@ -591,6 +597,33 @@ for i in range(nframes):
     # Transfer states and covariance from kp1 to k
     P_k = P_kp1.copy()
     x_k = x_kp1.copy()
+
+    orientation_threshold = 20
+    if i > orientation_threshold / dt:
+
+        if calc_true == 0:
+            omega_true = [1., 1., 1.]
+            q_ini = [1., 0., 0., 0.]
+            q_true_ip = np.array(get_true_orientation(Rot_L_to_B[i:], omega_true, debris_pos[i:, 0], dt, q_ini))
+            Rot_L_to_B_im = Rot_L_to_B[i:]
+            Rot_L_to_B_im_rev = Rot_L_to_B_im[::-1]
+            q_true_im_rev = np.array(get_true_orientation(Rot_L_to_B_im_rev, omega_true, debris_pos[:i, 0], -dt, q_ini))
+            q_true_im = q_true_im_rev[::-1, :]
+            q_true_final = np.vstack((q_true_im, q_true_ip))
+            q_est.append(q_ini)
+            calc_true = 1
+        else:
+            # print(q_est)
+            try:
+                q_est_i = get_true_orientation(Rot_L_to_B[i], x_k[6:9], debris_pos[:2, 0], dt, q_est[i - 1])
+            except ValueError:
+                q_est_i = [q_est[i - 1], q_est[i - 1]]
+                print("Error")
+
+            q_est.append(q_est_i[1])
+    else:
+        q_est_0 = [0., 0., 0., 0.]
+        q_est.append(q_est_0)
 
     # Append for analysis
     z_p_s.append(z_p_k)
@@ -632,6 +665,36 @@ np.save('detrended_z.npy', centroids_in_B[:, 2] - estimated_inB[:, 2])
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
+
+q_est = np.array(q_est)
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), q_true_final[:, 0], label='True', linestyle='--', color='green')
+plt.plot(np.arange(0, dt*nframes, dt), q_est[:, 0], label='Estimated', linestyle='-', color='orange')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_0$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), q_true_final[:, 1], label='True', linestyle='--', color='green')
+plt.plot(np.arange(0, dt*nframes, dt), q_est[:, 1], label='Estimated', linestyle='-', color='orange')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_1$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), q_true_final[:, 2], label='True', linestyle='--', color='green')
+plt.plot(np.arange(0, dt*nframes, dt), q_est[:, 2], label='Estimated', linestyle='-', color='orange')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_2$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), q_true_final[:, 3], label='True', linestyle='--', color='green')
+plt.plot(np.arange(0, dt*nframes, dt), q_est[:, 3], label='Estimated', linestyle='-', color='orange')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_3$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), centroids_in_B[:, 0], label='Measured', linewidth=1)
