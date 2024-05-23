@@ -550,7 +550,6 @@ for i in range(nframes):
     if i > 0:
         # if False:
         if bad_attitude_measurement_flag:
-            print(f"Bad attitude at t={i*dt}s")
             H = H2
             R = R2
         # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
