@@ -62,6 +62,20 @@ def quat_angle_diff(q1, q2):
     angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
     return abs(angle_diff)
 
+def quat_multiply(q1, q2):
+    q1_w = q1[0]
+    q1_v = q1[1:4]
+    q2_w = q2[0]
+    q2_v = q2[1:4]
+    result = np.hstack([q1_w*q2_w- np.dot(q1_v,q2_v),
+             (q1_w*q2_v + q2_w*q1_v + np.cross(q1_v, q2_v))])
+    return result
+
+def exp_to_quat(omega, dt):
+    angle = np.linalg.norm(omega)
+    axis = omega/np.linalg.norm(omega)
+    return np.hstack([np.cos(angle/2), axis*np.sin(angle/2)])
+
 def sigmoid(x, a=0.9, k=7):
     s= 1/(1+np.exp(k*(x-a)))
     y = -2/math.pi *x + 1

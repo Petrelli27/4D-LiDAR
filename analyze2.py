@@ -111,6 +111,10 @@ def orientationupdate(dt, x_k):
     q_kp1 = similar_quat(normalize_quat(dqkdt*dt + q_k), q_k)
     return q_kp1
 
+def initialorientationupdate(dt, x_k):
+    q0_k = x_k[12:16]
+    return q0_k.copy()
+
 def F_matrix(dt, R, x_k):
     """
 
@@ -131,7 +135,7 @@ def F_matrix(dt, R, x_k):
     p_k = x_k[:3]
     omega_k = x_k[6:9]
     p1_k = x_k[9:12]
-    q_k = x_k[12:]
+    q0_k = x_k[12:16]
 
     F = np.eye(16)
 
@@ -155,17 +159,19 @@ def F_matrix(dt, R, x_k):
     F[9:12, 9:12] = R
 
     # dq_k/domega_k
-    q_123k = q_k[1:]
-    q_0k = q_k[0]
-    bottom = np.array(skew(q_123k) + q_0k * np.eye(3))
-    F[12:, 6:9] = 0.5 * dt * np.concatenate((-np.array([q_123k]), bottom), axis=0)
+    # q_123k = q0_k[1:]
+    # q_k = q_k[0]
+    # bottom = np.array(skew(q_123k) + q_0k * np.eye(3))
+    # F[12:, 6:9] = 0.5 * dt * np.concatenate((-np.array([q_123k]), bottom), axis=0)
+    F[12:16, 6:9] = np.zeros((4,3))
 
     # dq_k/dq_k
-    F_temp = np.zeros((4, 4))
-    F_temp[0, 1:] = -np.array(omega_k)
-    F_temp[1:, 0] = omega_k
-    F_temp[1:, 1:] = skew(omega_k)
-    F[12:, 12:] = F_temp + np.eye(4)
+    # F_temp = np.zeros((4, 4))
+    # F_temp[0, 1:] = -np.array(omega_k)
+    # F_temp[1:, 0] = omega_k
+    # F_temp[1:, 1:] = skew(omega_k)
+    # F[12:, 12:] = F_temp + np.eye(4)
+    F[12:16, 12:16] = np.eye(4)
 
     return F
 
@@ -251,7 +257,7 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 p = 0.0005
 om = 0.000025
 p1 = 0.0500
-q = 40000
+q = 0.4
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -261,6 +267,23 @@ H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
 H1[0:3,0:3] = np.eye(3)
 H1[3:,6:] = np.eye(10)
 bad_attitude_measurement_flag = False
+
+def H1_func(x_k, i, dt):
+    omega_k = x_k[6:9]
+    omega_x = omega_k[0]; omega_y = omega_k[1]; omega_z = omega_k[2]
+    phi = np.linalg.norm(omega_k)*dt*i/2
+    s_phi = np.sin(phi)
+    c_phi = np.cos(phi)
+    H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
+    H1[0:3,0:3] = np.eye(3)
+    H1[3:9,6:12] = np.eye(6)
+    dq0dqk = np.eye(4)*c_phi + (s_phi/np.linalg.norm(omega_k) *
+            np.array([[0, -omega_x, -omega_y, -omega_z],
+                    [omega_x, 0, -omega_z, omega_y],
+                    [omega_y, omega_z, 0, -omega_x],
+                    [omega_z, -omega_y, omega_x, 0]]))
+    H1[9:13, 12:16] = dq0dqk.T
+    return H1
 
 H2 = np.zeros([9,16])
 H2[0:3,0:3] = np.eye(3)
@@ -304,8 +327,9 @@ for i in range(nframes):
         p1_kp1, R_k_kp1 = verticeupdate(dt, x_k)
 
         # Orientation Update
-        q_kp1 = orientationupdate(dt, x_k)
-        q_kp1_true = q_true[i]
+        q0_kp1 = initialorientationupdate(dt, x_k)
+        q_kp1 = quat_multiply(exp_to_quat(omega_k, i*dt), q0_kp1)
+  
         # q_kp1 = abs(q_kp1)
 
         # Compute Jacobian
@@ -315,7 +339,7 @@ for i in range(nframes):
         P_kp1 = np.matmul(F_kp1, np.matmul(P_k, F_kp1.T)) + Q
 
         # Make updated State vector
-        x_kp1 = np.hstack([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1])
+        x_kp1 = np.hstack([p_kp1, v_kp1, omega_kp1, p1_kp1, q0_kp1])
 
     #######################
     # Measurements
@@ -341,7 +365,7 @@ for i in range(nframes):
     else:
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         prediction_angle_diff = np.rad2deg(quat_angle_diff(z_q_k, q_true[i]))
-        bad_attitude_measurement_flag = (prediction_angle_diff > 25)
+        bad_attitude_measurement_flag = False
         # z_q_k = q_true[i]; bad_attitude_measurement_flag = False; error = 0 #perfect
         errors.append(prediction_angle_diff)
     if i < 40: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
@@ -361,7 +385,7 @@ for i in range(nframes):
         z_p1_k = associatedBbox[:,0]
 
 
-    if (abs(i-100)<40) and i%100==0:
+    if (abs(i-10)<10) and i%1==0:
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -507,7 +531,7 @@ for i in range(nframes):
     #     cur_q = z_q_k
     #     prev_R_in_B = Rot_L_to_B[i] @ quat2rotm(prev_q)
     #     cur_R_in_B = Rot_L_to_B[i] @ quat2rotm(cur_q)
-    #     prev_R_in_B_after_LLS = prev_R_in_B @ rodrigues(omega_LLS_B, dt)
+    #     prev_R_in_B_after_LLS = rodrigues(omega_LLS_B, dt) @ prev_R_in_B
     #     net_R_in_B = (prev_R_in_B_after_LLS.T) @ (cur_R_in_B)
     #     rotation_axis_bbox, rotation_angle_bbox = R_to_axis_angle(net_R_in_B)
     #     omega_bbox = rotation_axis_bbox * rotation_angle_bbox / dt
@@ -540,7 +564,8 @@ for i in range(nframes):
 
     # Set initial states to measurements
     if i == 0:
-        x_k = np.hstack([np.array([-170., -350., -20.]), vT_0, z_omega_k,z_p1_k, z_q_k])
+        z_q_0 = rotm2quat(np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]))
+        x_k = np.hstack([np.array([-170., -350., -20.]), vT_0, z_omega_k,z_p1_k, z_q_0])
 
     ##############
     # Update - Combine Measurement and Estimates
@@ -556,7 +581,7 @@ for i in range(nframes):
         #     pass
         else:
             # Calculate the Kalman gain
-            H = H1
+            H = H1_func(x_k, i, dt)
             R = R1
         K_kp1 = np.matmul(P_kp1, np.matmul(H.T, np.linalg.inv(np.matmul(H, np.matmul(P_kp1, H.T)) + R)))
 
