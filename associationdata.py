@@ -142,10 +142,12 @@ def rotation_association(q_kp1, R_1):
     # q_avg = eigenvectors[max_eigval_index]
     # if q_avg[0] < 0:
     #     q_avg = -q_avg
-    # return Q_list[0], bad_attitude_measurement_flag
-    q_candidate1 = normalize_quat(slerp(Q_list[0], Q_list[1], weights_normed[1]))
-    q_candidate2 = -q_candidate1 # equivalent quaternion form
-    if np.linalg.norm(q_kp1 - q_candidate1) < np.linalg.norm(q_kp1 - q_candidate2):
-        return q_candidate1, bad_attitude_measurement_flag, min_error
-    else:
-        return q_candidate2, bad_attitude_measurement_flag, min_error
+    return normalize_quat(Q_list[0]), bad_attitude_measurement_flag, min_error
+
+
+    # q_candidate1 = normalize_quat(slerp(Q_list[0], Q_list[1], weights_normed[1]))
+    # q_candidate2 = -q_candidate1 # equivalent quaternion form
+    # if np.linalg.norm(q_kp1 - q_candidate1) < np.linalg.norm(q_kp1 - q_candidate2):
+    #     return q_candidate1, bad_attitude_measurement_flag, min_error
+    # else:
+    #     return q_candidate2, bad_attitude_measurement_flag, min_error

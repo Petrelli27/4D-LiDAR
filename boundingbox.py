@@ -4,6 +4,212 @@ import numpy as np
 import numpy.linalg as LA
 from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
+import open3d as o3d
+from sklearn.decomposition import PCA
+
+
+def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
+    # z1 plane boundary
+    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p4[0]], [p3[1], p4[1]], [p3[2], p4[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color=color, linewidth=linewidth)
+
+    # z1 plane boundary
+    ax.plot([p5[0], p6[0]], [p5[1], p6[1]], [p5[2], p6[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p6[0], p7[0]], [p6[1], p7[1]], [p6[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p7[0], p8[0]], [p7[1], p8[1]], [p7[2], p8[2]], color=color, linewidth=linewidth)
+    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color=color, linewidth=linewidth)
+
+    # Connecting
+    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color, linewidth=linewidth)
+
+    ax.scatter(p1[0], p1[1], p1[2], color='b')
+    ax.scatter(p2[0], p2[1], p2[2], color='g')
+    ax.scatter(p3[0], p3[1], p3[2], color='r')
+    ax.scatter(p4[0], p4[1], p4[2], color='c')
+    ax.scatter(p5[0], p5[1], p5[2], color='m')
+    ax.scatter(p6[0], p6[1], p6[2], color='y')
+    ax.scatter(p7[0], p7[1], p7[2], color='k')
+    ax.scatter(p8[0], p8[1], p8[2], color='#9b42f5')
+
+
+def custom_arccos(x):
+    """
+    Compute the arccosine of x and ensure the angle is between 0 and 90 degrees.
+
+    Parameters:
+    x (float or array-like): The input value(s) for which to compute the arccosine.
+
+    Returns:
+    float or ndarray: The arccosine of x, constrained to be between 0 and 90 degrees.
+    """
+    # Compute the arccosine in radians
+    angle_rad = np.arccos(x)
+
+    # Convert the angle to degrees
+    angle_deg = np.degrees(angle_rad)
+
+    # Adjust the angle to be within 0 to 90 degrees
+    angle_deg = np.where(angle_deg > 90, 180 - angle_deg, angle_deg)
+
+    return angle_deg
+
+
+def gram_schmidt(vectors):
+    """Perform Gram-Schmidt process to create an orthonormal basis."""
+    basis = []
+    for v in vectors:
+        # Orthogonalize
+        for b in basis:
+            v = v - np.dot(b, v) * b
+        # Normalize
+        if np.linalg.norm(v) > 1e-10:  # To avoid division by zero
+            v = v / np.linalg.norm(v)
+            basis.append(v)
+
+    print(len(basis))
+    if len(basis) == 2:
+        basis.append(np.cross(basis[0], basis[1]))
+    if len(basis) < 2:
+        print('Error: not enough basis vectors')
+    return np.array(basis)
+
+def boundingbox3D_RANSAC(x, y, z, return_evec=False):
+
+    # Apply Ransac to remove bad points that are alone
+    points = np.vstack((x, y, z)).T  # orginal point cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+
+    # Apply RANSAC to segment a plane
+    # Parameters
+    distance_threshold = 0.2  # Adjust based on your data
+    ransac_n = 3
+    num_iterations = 1000
+    min_inliers = 3  # Minimum number of inliers to consider a plane valid
+    # Container for all planes
+    all_planes = []
+    all_points = np.array([0, 0, 0])  # final point cloud
+    remaining_points = pcd
+    normal_vecs = []
+    # o3d.visualization.draw_geometries([remaining_points])
+    while len(remaining_points.points) > min_inliers:
+        # Apply RANSAC to segment a plane
+        plane_model, inliers = remaining_points.segment_plane(distance_threshold=distance_threshold,
+                                                              ransac_n=ransac_n,
+                                                              num_iterations=num_iterations)
+
+        normal_vecs.append(plane_model[:3])
+        # Extract inlier points
+        inlier_cloud = remaining_points.select_by_index(inliers)
+        all_planes.append(inlier_cloud)
+        all_points = np.vstack((all_points, np.array(inlier_cloud.points)))
+
+        # Extract outlier points
+        remaining_points = remaining_points.select_by_index(inliers, invert=True)
+
+        # Optional: visualize each detected plane
+        # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
+        # remaining_points.paint_uniform_color([0.0, 1, 0])  # Green remaining points
+        # o3d.visualization.draw_geometries([inlier_cloud, remaining_points])
+
+    # Visualize all detected planes
+    all_planes_colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 0], [0, 1, 1]]  # Different colors for planes
+    for idx, plane in enumerate(all_planes):
+        color = all_planes_colors[idx % len(all_planes_colors)]
+        plane.paint_uniform_color(color)
+
+    # Rankings
+    # projections = all_points[1:, :].dot(principal_components.T)
+    ranking = np.zeros((len(normal_vecs), len(normal_vecs)))
+    for ix, normal_veci in enumerate(normal_vecs):
+        for jx, normal_vecj in enumerate(normal_vecs):
+            if ix == jx:
+                ranking[ix, jx] = 0
+            else:
+                veci = normal_veci / np.linalg.norm(normal_veci)
+                vecj = normal_vecj / np.linalg.norm(normal_vecj)
+                ranking[ix, jx] = custom_arccos(np.dot(veci, vecj))
+
+    print(ranking)
+    rankings = np.sum(ranking, axis=0)
+    print(rankings)
+    normal_vecs = np.array(normal_vecs)
+
+    # order of planes is red green blue magenta
+    if len(remaining_points.points) > 0:
+        remaining_points.paint_uniform_color([0, 0, 0])
+        all_planes.append(remaining_points)
+        o3d.visualization.draw_geometries(all_planes)
+    else:
+        o3d.visualization.draw_geometries(all_planes)
+
+    # Pair the vectors with their corresponding values
+    paired_list = list(zip(rankings, normal_vecs))
+
+    # Sort the pairs by values in decreasing order
+    sorted_pairs = sorted(paired_list, key=lambda x: x[0], reverse=True)
+
+    # Unzip the sorted pairs
+    sorted_values, sorted_vectors = zip(*sorted_pairs)
+    sorted_vectors = np.array(sorted_vectors)
+
+    # update points
+    points = all_points[1:, :]  # one to get rid of zero zero zero from beginning
+    projections = gram_schmidt(sorted_vectors)
+    projections = projections
+
+    means = np.mean(points, axis=0)
+    centered_data = points - means
+    centered_data = centered_data.T
+
+    aligned_coords = np.matmul(projections, centered_data)
+
+    xmin, xmax, ymin, ymax, zmin, zmax = np.min(aligned_coords[0, :]), np.max(aligned_coords[0, :]), np.min(
+        aligned_coords[1, :]), np.max(aligned_coords[1, :]), np.min(aligned_coords[2, :]), np.max(aligned_coords[2, :])
+
+    rectCoords = lambda x1, y1, z1, x2, y2, z2: np.array([[x1, x1, x2, x2, x1, x1, x2, x2],
+                                                          [y1, y2, y2, y1, y1, y2, y2, y1],
+                                                          [z1, z1, z1, z1, z2, z2, z2, z2]])
+
+    rrc = np.matmul(projections.T, rectCoords(xmin, ymin, zmin, xmax, ymax, zmax))  # rrc = rotated rectangle coordinates
+
+    # Translate back to original location
+    rrc = rrc.T + means
+    rrc = rrc.T
+
+    c_x = sum(rrc[0, :]) / len(rrc[0, :])
+    c_y = sum(rrc[1, :]) / len(rrc[1, :])
+    c_z = sum(rrc[2, :]) / len(rrc[2, :])
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot([0, projections[0, 0]], [0, projections[0, 1]], [0, projections[0, 2]], color='red')
+    ax.plot([0, projections[1, 0]], [0, projections[1, 1]], [0, projections[1, 2]], color='red')
+    ax.plot([0, projections[2, 0]], [0, projections[2, 1]], [0, projections[2, 2]], color='red')
+    ax.plot([0, sorted_vectors[0, 0]], [0, sorted_vectors[0, 1]], [0, sorted_vectors[0, 2]], color='blue')
+    ax.plot([0, sorted_vectors[1, 0]], [0, sorted_vectors[1, 1]], [0, sorted_vectors[1, 2]], color='blue')
+    if len(sorted_vectors) > 2:
+        ax.plot([0, sorted_vectors[2, 0]], [0, sorted_vectors[2, 1]], [0, sorted_vectors[2, 2]], color='blue')
+    ax.scatter(centered_data[0, :], centered_data[1, :], centered_data[2, :], color='black', s=1)
+    associatedBbox_2 = rrc.T - means
+    associatedBbox_2 = associatedBbox_2.T
+    drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
+                  associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
+                  'orange', 2)
+
+    plt.show()
+
+    # ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
+    # evec is aligned with the point cloud and bbox
+    if return_evec:
+        return rrc, [c_x, c_y, c_z], projections.T, sorted_vectors
+    else:
+        return rrc, [c_x, c_y, c_z], sorted_vectors
 
 
 
