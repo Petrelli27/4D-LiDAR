@@ -341,7 +341,7 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True)
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, i>0 and i%100==0)
     # R_1_2 = R_1_2.T
     # z_p_k = debris_pos[i, :]
     # Orientation association
@@ -379,7 +379,7 @@ for i in range(nframes):
         z_p1_k = associatedBbox[:,0]
 
 
-    if i>0 and i%1==0:
+    if i>0 and i%100==0:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
