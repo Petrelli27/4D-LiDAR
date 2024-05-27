@@ -281,7 +281,7 @@ omega_kabsch_b_box = np.zeros((n_moving_average,3))
 
 q_kp1s =[]
 metrics = []
-
+z_s_all = []
 for i in range(nframes):
 
     # Use first measurements for initializations of states
@@ -361,6 +361,8 @@ for i in range(nframes):
         z_pi_k = z_pi_k_1.copy()
         z_p_k = z_p_k_1.copy()
         perfect_metric = False
+        is_z_q_k_good = True
+        is_z_q_k_2_good = True
     else:
         z_q_k_1, _, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
@@ -369,12 +371,12 @@ for i in range(nframes):
         else:
             perfect_metric = False
 
-        if np.min(R_1.T @ R_1_2) > np.cos(np.deg2rad(25)):
+        if np.max(R_1.T @ R_1_2) < np.cos(np.deg2rad(35)):
             # bad z_q_k
             is_z_q_k_good = False
         else:
             is_z_q_k_good = True
-        if  np.max(ranking) < 70:
+        if  np.max(ranking) < 85:
             is_z_q_k_2_good = False
         else:
             is_z_q_k_2_good = True
@@ -402,7 +404,7 @@ for i in range(nframes):
         elif (not is_z_q_k_good) and (not is_z_q_k_2_good):
             # both are bad
             bad_attitude_measurement_flag = True
-    metrics.append([int(perfect_metric), int(bad_attitude_measurement_flag)])        
+    metrics.append([int(perfect_metric), int(not is_z_q_k_good)])        
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
@@ -432,7 +434,7 @@ for i in range(nframes):
         
 
 
-    if abs(i-10)<50 and i%10==1:
+    if abs(i-10)<50 and i%1000==1:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
