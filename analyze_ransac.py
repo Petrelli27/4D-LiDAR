@@ -110,9 +110,8 @@ def orientationupdate(dt, x_k):
                           [-qz, qw, qx],
                           [qy, -qx, qw]]) @ omega_k
     
-    q_kp1 = normalize_quat(dqkdt*dt + q_k)
-    q_kp1_pos = q_kp1 #if q_kp1[0] >=0 else -q_kp1
-    return q_kp1_pos
+    q_kp1 = similar_quat(normalize_quat(dqkdt*dt + q_k), q_k)
+    return q_kp1
 
 def F_matrix(dt, R, x_k):
     """
@@ -231,6 +230,7 @@ omega_0 = [1., 1., 1.]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+q_true_alt = -q_true
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -246,9 +246,9 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 
 # Measurement noise covariance matrix
 p = 0.00025
-om = .05
-p1 = 1
-q = 0.0004
+om = .00005
+p1 = 0.1
+q = 0.4
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -340,46 +340,78 @@ for i in range(nframes):
 
 
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, i>0 and i%100==0)
+    z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, i>0 and i%500==0)
     # R_1_2 = R_1_2.T
     # z_p_k = debris_pos[i, :]
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
         # z_q_k = rotm2quat(R_1)
-        z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
+        z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
         z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]))  # this rotation is to set initial orientation to match with true
-
+        z_q_k = z_q_k_1.copy()
+        z_pi_k = z_pi_k_1.copy()
+        z_p_k = z_p_k_1.copy()
     else:
-        z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
+        z_q_k_1, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
-        
+        if np.min(R_1.T @ R_1_2) > np.cos(np.deg2rad(15)):
+            # bad z_q_k
+            is_z_q_k_good = False
+        else:
+            is_z_q_k_good = True
+        if  np.max(ranking) < 80:
+            is_z_q_k_2_good = False
+        else:
+            is_z_q_k_2_good = True
         # z_q_k_2 = rotm2quat(R_1_2)
         # z_q_k = q_true[i]
-        errors.append(np.rad2deg(error))
+        # errors.append(np.rad2deg(error))
+        if is_z_q_k_good and is_z_q_k_2_good:
+            # everything is good, so just use z_q_k
+            bad_attitude_measurement = False
+            z_q_k = z_q_k_1.copy()
+            z_pi_k = z_pi_k_1.copy()
+            z_p_k = z_p_k_1.copy()
+        elif (i<100) or (is_z_q_k_good and (not is_z_q_k_2_good)):
+            # ransac bbox bad because there were no orthogonal planes
+            bad_attitude_measurement = False
+            z_q_k = z_q_k_1.copy()
+            z_pi_k = z_pi_k_1.copy()
+            z_p_k = z_p_k_1.copy()
+        elif (not is_z_q_k_good) and (is_z_q_k_2_good):
+            # pca is bad, but ransac results are good
+            bad_attitude_measurement = False
+            z_q_k = z_q_k_2.copy()
+            z_pi_k = z_pi_k_2.copy()
+            z_p_k = z_p_k_2.copy()
+        elif (not is_z_q_k_good) and (not is_z_q_k_2_good):
+            # both are bad
+            bad_attitude_measurement = True
+            
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    # if i==0 or (not bad_attitude_measurement_flag):
-    if True:
+    if i==0 or (not bad_attitude_measurement_flag):
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
-        associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-        z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+        associatedBbox_1, Lm_1, Wm_1, Dm_1 = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+        z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
         associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2,
                                                             R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
         z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-
+        associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k , z_p_k , R_1)
+        z_p1_k = associatedBbox[:, 0]
     else:
         print(f"bad attitude at t={i*dt}")
         associatedBbox = predictedBbox
         z_p1_k = associatedBbox[:,0]
 
 
-    if i>0 and i%100==0:
+    if i>0 and i%1000==1:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -394,25 +426,17 @@ for i in range(nframes):
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
-        # L, W, D = abs(Rotation.as_matrix(Rotation.from_quat(q_kp1)).T @ (p1_kp1 - p_k))
-        # p2_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @ np.array([-L, W, -D]) + p_k
-        # p3_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, W, -D]) + p_k
-        # p4_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, -W, -D]) + p_k
-        # p5_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([-L, -W, D]) + p_k
-        # p6_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([-L, W, D]) + p_k
-        # p7_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, W, D]) + p_k
-        # p8_kp1 = Rotation.as_matrix(Rotation.from_quat(q_kp1)) @np.array([L, -W, D]) + p_k
-        # print(p1_kp1)
-        # print(p7_kp1)
-        # print(L, W, D)
 
         # print(x_kp1)
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
-        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
-                      associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
+        drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2], associatedBbox_1[:, 3],
+                      associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7], 'b', 2)
 
         drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
                   associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7], 'orange', 2)
+        
+        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+                  associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'pink', 2)
 
     # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
         #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
@@ -623,7 +647,7 @@ for i in range(nframes):
 
         # Update State
         x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
-        x_kp1[12:] = normalize_quat(x_kp1[12:])
+        x_kp1[12:] = similar_quat(normalize_quat(x_kp1[12:]), x_k[12:16])
 
         # Update Covariance
         P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
@@ -653,7 +677,6 @@ for i in range(nframes):
 
 z_s = padding_nan(z_s)
 x_s = np.array(x_s)
-q_true = np.array(q_true)
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
@@ -796,6 +819,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 0], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_0$')
@@ -805,6 +829,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes,1], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 1], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_1$')
@@ -814,6 +839,7 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 2], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_2$')
@@ -823,15 +849,12 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 3], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
 #plt.title('Orientation $\displaystyle q_3$')
 
-fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), errors, label='Angular Error', linewidth=1)
-plt.xlabel('Time (s)')
-plt.ylabel('Angle (degrees)')
 """
 fig = plt.figure()
 true_b = []

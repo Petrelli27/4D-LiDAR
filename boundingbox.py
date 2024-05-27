@@ -187,9 +187,9 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
     # ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
     # evec is aligned with the point cloud and bbox
     if return_evec:
-        return rrc, [c_x, c_y, c_z], projections.T, sorted_vectors
+        return rrc, [c_x, c_y, c_z], projections.T, sorted_vectors, ranking
     else:
-        return rrc, [c_x, c_y, c_z], sorted_vectors
+        return rrc, [c_x, c_y, c_z], sorted_vectors, ranking
 
 
 
