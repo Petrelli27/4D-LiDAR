@@ -248,14 +248,14 @@ qp = 0.0000001
 qv = 0.0000005
 qom = 0.005
 qp1 = 0.05
-qq = 0.0005
+qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
 p = 0.00025
-om = .00005
-p1 = 0.1
-q = 0.4
+om = .05
+p1 = 1
+q = 0.0004
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -280,6 +280,7 @@ omegas_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
 
 q_kp1s =[]
+metrics = []
 
 for i in range(nframes):
 
@@ -314,7 +315,6 @@ for i in range(nframes):
         # x_k[12:] = q_true[i - 1]
         q_kp1 = orientationupdate(dt, x_k)
         q_kp1s.append(q_kp1)
-        # q_kp1 = q_true[i] if i < nframes - 1 else q_true[i]
 
         # plt.figure()
         # array_qkp1s = np.array(q_kp1s)
@@ -360,9 +360,15 @@ for i in range(nframes):
         z_q_k = z_q_k_1.copy()
         z_pi_k = z_pi_k_1.copy()
         z_p_k = z_p_k_1.copy()
+        perfect_metric = False
     else:
-        z_q_k_1, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
+        z_q_k_1, _, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
+        if quat_angle_diff(z_q_k_1, q_true[i,:]) > np.deg2rad(25):
+            perfect_metric = True
+        else:
+            perfect_metric = False
+
         if np.min(R_1.T @ R_1_2) > np.cos(np.deg2rad(25)):
             # bad z_q_k
             is_z_q_k_good = False
@@ -377,48 +383,56 @@ for i in range(nframes):
         # errors.append(np.rad2deg(error))
         if is_z_q_k_good and is_z_q_k_2_good:
             # everything is good, so just use z_q_k
-            bad_attitude_measurement = False
+            bad_attitude_measurement_flag = False
             z_q_k = z_q_k_1.copy()
             z_pi_k = z_pi_k_1.copy()
             z_p_k = z_p_k_1.copy()
         elif (i<100) or (is_z_q_k_good and (not is_z_q_k_2_good)):
             # ransac bbox bad because there were no orthogonal planes
-            bad_attitude_measurement = False
+            bad_attitude_measurement_flag = False
             z_q_k = z_q_k_1.copy()
             z_pi_k = z_pi_k_1.copy()
             z_p_k = z_p_k_1.copy()
         elif (not is_z_q_k_good) and (is_z_q_k_2_good):
             # pca is bad, but ransac results are good
-            bad_attitude_measurement = False
+            bad_attitude_measurement_flag = False
             z_q_k = z_q_k_2.copy()
             z_pi_k = z_pi_k_2.copy()
             z_p_k = z_p_k_2.copy()
         elif (not is_z_q_k_good) and (not is_z_q_k_2_good):
             # both are bad
-            bad_attitude_measurement = True
-            
+            bad_attitude_measurement_flag = True
+    metrics.append([int(perfect_metric), int(bad_attitude_measurement_flag)])        
     if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    if i==0 or (not bad_attitude_measurement_flag):
+    if i==0 or (not perfect_metric):
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
         associatedBbox_1, Lm_1, Wm_1, Dm_1 = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
         z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-        associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2,
-                                                            R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
-        z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-        associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k , z_p_k , R_1)
+        # associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2,
+        #                                                     R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
+        # z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+        # associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k , z_p_k , R_1)
+
+        # verifying metric usefulness
+        associatedBbox, Lm, Wm, Dm = associatedBbox_1, Lm_1, Wm_1, Dm_1
+        z_q_k = z_q_k_1.copy()
+        z_pi_k = z_pi_k_1.copy()
+        z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox[:, 0]
     else:
         print(f"bad attitude at t={i*dt}")
         associatedBbox = predictedBbox
+        z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox[:,0]
+        
 
 
-    if i>0 and i%500==1:
+    if abs(i-10)<50 and i%10==1:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -439,8 +453,8 @@ for i in range(nframes):
         drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2], associatedBbox_1[:, 3],
                       associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7], 'b', 2)
 
-        drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
-                  associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7], 'orange', 2)
+        # drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
+        #           associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7], 'orange', 2)
         
         drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
                   associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'pink', 2)
@@ -616,12 +630,12 @@ for i in range(nframes):
     else:
         z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
 
-    z_omega_k = np.array([1, 1, 1])
+    # z_omega_k = np.array([1, 1, 1])
     #################################
 
     # Compute Measurement Vector
     # if False:
-    if bad_attitude_measurement_flag:
+    if perfect_metric:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
@@ -637,7 +651,7 @@ for i in range(nframes):
     # allow for some time for states to settle
     if i > 0:
         # if False:
-        if bad_attitude_measurement_flag:
+        if perfect_metric:
             H = H2
             R = R2
         # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
@@ -860,6 +874,14 @@ plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
 #plt.title('Orientation $\displaystyle q_3$')
+
+metrics = np.array(metrics)
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), metrics[:,0], label='Perfect Metric', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), metrics[:,1], label='Our Metric', linewidth=1)
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Metric')
 
 """
 fig = plt.figure()
