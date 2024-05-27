@@ -459,6 +459,7 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k, z_p_k = boundingbox.bbox3d(X_i, Y_i, Z_i)
+    z_pi_k_2, z_p_k_2 = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i)
 
     centroids_in_B.append(Rot_L_to_B[i]@z_p_k)
 
@@ -485,6 +486,7 @@ for i in range(nframes):
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=0.5)
         drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'r')
         drawrectangle(ax, z_p1_k, z_p2_k, z_p3_k, z_p4_k, z_p5_k, z_p6_k, z_p7_k, z_p8_k, 'b')
+
         ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
         ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
         ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')

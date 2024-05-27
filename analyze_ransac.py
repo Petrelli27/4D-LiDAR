@@ -12,6 +12,7 @@ from associationdata import nearest_search
 from associationdata import rotation_association
 from mytools import *
 import pickle
+import open3d as o3d
 
 from mpl_toolkits import mplot3d
 from matplotlib import pyplot
@@ -108,8 +109,10 @@ def orientationupdate(dt, x_k):
                           [qw, qz, -qy],
                           [-qz, qw, qx],
                           [qy, -qx, qw]]) @ omega_k
-    q_kp1 = similar_quat(normalize_quat(dqkdt*dt + q_k), q_k)
-    return q_kp1
+    
+    q_kp1 = normalize_quat(dqkdt*dt + q_k)
+    q_kp1_pos = q_kp1 #if q_kp1[0] >=0 else -q_kp1
+    return q_kp1_pos
 
 def F_matrix(dt, R, x_k):
     """
@@ -180,16 +183,11 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
         q_i = rotm2quat(Rot_i @ Rot_0)
-        if i == 0:
-            q_s.append(q_i)
-        else:
-            q_i_alt = -q_i
-            q_prev = q_s[i-1]
-            if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
-                q_s.append(q_i)
-            else:
-                q_s.append(q_i_alt)
+        q_s.append(q_i)
+
     return q_s
+
+
 
 # initialize debris position, velocity and orientation
 O_B = np.array([0,0,0])
@@ -230,11 +228,9 @@ nframes = len(VBs)
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 omega_0 = [1., 1., 1.]
-omega_0 = [1,1,1]# [0.5,0.1,-0.5]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
-q_true_alt = -q_true
 
 # Initial covariance
 P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25])  # Initial Covariance matrix
@@ -245,7 +241,7 @@ qp = 0.0000001
 qv = 0.0000005
 qom = 0.005
 qp1 = 0.05
-qq = 0.000005
+qq = 0.0005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
@@ -275,7 +271,6 @@ settling_time = 500
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
 omega_kabsch_b_box = np.zeros((n_moving_average,3))
-bad_orientation_predictions = []
 
 q_kp1s =[]
 
@@ -311,7 +306,6 @@ for i in range(nframes):
             q_kp1s.append(q_ini)
         # x_k[12:] = q_true[i - 1]
         q_kp1 = orientationupdate(dt, x_k)
-        q_kp1_true = q_true[i]
         q_kp1s.append(q_kp1)
         # q_kp1 = q_true[i] if i < nframes - 1 else q_true[i]
 
@@ -344,39 +338,49 @@ for i in range(nframes):
     Y_i = YLs[i]
     Z_i = ZLs[i]
 
+
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True) # unassociated bbox
+    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, i>0 and i%100==0)
+    # R_1_2 = R_1_2.T
     # z_p_k = debris_pos[i, :]
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
         # z_q_k = rotm2quat(R_1)
         z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
+        z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+                                                                        1.]]))  # this rotation is to set initial orientation to match with true
+
     else:
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
-        prediction_angle_diff = np.rad2deg(quat_angle_diff(z_q_k, q_true[i]))
-        bad_attitude_measurement_flag = (prediction_angle_diff > 25)
-        # z_q_k = q_true[i]; bad_attitude_measurement_flag = False; error = 0 #perfect
-        errors.append(prediction_angle_diff)
-    if i < 40: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
+        z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
+        # z_q_k_2 = rotm2quat(R_1_2)
+        # z_q_k = q_true[i]
+        errors.append(np.rad2deg(error))
+    if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    if i==0 or (not bad_attitude_measurement_flag):
-    # if True:
+    # if i==0 or (not bad_attitude_measurement_flag):
+    if True:
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
         associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
         z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+        associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2,
+                                                            R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
+        z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+
     else:
         print(f"bad attitude at t={i*dt}")
         associatedBbox = predictedBbox
         z_p1_k = associatedBbox[:,0]
 
 
-    if i>65 and (abs(i-100)<100) and i%100==0:
-
+    if i>0 and i%100==0:
+    # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         # ax.legend()
@@ -406,18 +410,26 @@ for i in range(nframes):
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
         drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
                       associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
-        # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+
+        drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
+                  associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7], 'orange', 2)
+
+    # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
         #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
-        drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
-                      predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+        # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
+        #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
 
-        ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
-        ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
-                   label='Vertex 1 Meas.')
+        # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
+        # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
+        #            label='Vertex 1 Meas.')
         ax.legend()
         
         Rot_measured = quat2rotm(z_q_k)
+
+        Rot_measured_2 = quat2rotm(z_q_k_2)
+        Rot_measured_2 = R_1_2
+        # normal_vecs = normal_vecs.T
 
         R_estimated = quat2rotm(q_kp1)
 
@@ -432,16 +444,38 @@ for i in range(nframes):
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]], [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
         color='b', linewidth=4)
 
+        # plot measured
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                color='red', linewidth=4)
+
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
+        #         color='blue', linewidth=4)
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 1]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 1]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 1]],
+        #         color='blue', linewidth=4)
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 2]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 2]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 2]],
+        #         color='blue', linewidth=4)
+        #
+
         # plot current estimate of ekf
-        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
-                [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
-                color='orange', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
-                [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
-                color='orange', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
-                [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
-                color='orange', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+        #         color='orange', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+        #         color='orange', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+        #         color='orange', linewidth=4)
 
         # plot true
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
@@ -466,11 +500,19 @@ for i in range(nframes):
         #         color='b', linewidth=1)
 
         # black is axis of rotation
-        ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
-                [z_p_k[2], z_p_k[2] + 1],
-                color='black', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+        #         [z_p_k[2], z_p_k[2] + 1],
+        #         color='black', linewidth=4)
 
 
+
+
+        # outlier_cloud = pcd.select_by_index(inliers, invert=True)
+
+        # Visualize the inliers (plane) and outliers
+        # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
+        # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
+        # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
         plt.show()
 
@@ -542,12 +584,13 @@ for i in range(nframes):
         z_omega_k = omega_LLS + omega_L_to_B # ignores kabsch
     else:
         z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
-    z_omega_k = np.array([1,1,1]) # debug: use true value of omega
+
+    # z_omega_k = np.array([1, 1, 1])
     #################################
 
     # Compute Measurement Vector
-    # if False:
-    if bad_attitude_measurement_flag:
+    if False:
+    # if bad_attitude_measurement_flag:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
@@ -562,8 +605,9 @@ for i in range(nframes):
 
     # allow for some time for states to settle
     if i > 0:
-        # if False:
-        if bad_attitude_measurement_flag:
+        if False:
+        # if bad_attitude_measurement_flag:
+            print(f"Bad attitude at t={i*dt}s")
             H = H2
             R = R2
         # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
@@ -579,7 +623,7 @@ for i in range(nframes):
 
         # Update State
         x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
-        x_kp1[12:] = similar_quat(normalize_quat(x_kp1[12:]), x_k[12:16])
+        x_kp1[12:] = normalize_quat(x_kp1[12:])
 
         # Update Covariance
         P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
@@ -752,7 +796,6 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
-plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 0], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_0$')
@@ -762,7 +805,6 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes,1], label='True', linewidth=1, linestyle='dashed')
-plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 1], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_1$')
@@ -772,7 +814,6 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
-plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 2], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_2$')
@@ -782,7 +823,6 @@ fig = plt.figure()
 plt.plot(np.arange(0, dt*nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt*nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
 plt.plot(np.arange(0, dt*nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
-plt.plot(np.arange(0, dt*nframes, dt), q_true_alt[:nframes, 3], label='True equiv.', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
