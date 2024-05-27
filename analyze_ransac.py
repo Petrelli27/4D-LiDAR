@@ -182,8 +182,15 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
         q_i = rotm2quat(Rot_i @ Rot_0)
-        q_s.append(q_i)
-
+        if i == 0:
+            q_s.append(q_i)
+        else:
+            q_i_alt = -q_i
+            q_prev = q_s[i-1]
+            if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
+                q_s.append(q_i)
+            else:
+                q_s.append(q_i_alt)
     return q_s
 
 
@@ -356,12 +363,12 @@ for i in range(nframes):
     else:
         z_q_k_1, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
-        if np.min(R_1.T @ R_1_2) > np.cos(np.deg2rad(15)):
+        if np.min(R_1.T @ R_1_2) > np.cos(np.deg2rad(25)):
             # bad z_q_k
             is_z_q_k_good = False
         else:
             is_z_q_k_good = True
-        if  np.max(ranking) < 80:
+        if  np.max(ranking) < 70:
             is_z_q_k_2_good = False
         else:
             is_z_q_k_2_good = True
@@ -411,7 +418,7 @@ for i in range(nframes):
         z_p1_k = associatedBbox[:,0]
 
 
-    if i>0 and i%1000==1:
+    if i>0 and i%500==1:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -609,12 +616,12 @@ for i in range(nframes):
     else:
         z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
 
-    # z_omega_k = np.array([1, 1, 1])
+    z_omega_k = np.array([1, 1, 1])
     #################################
 
     # Compute Measurement Vector
-    if False:
-    # if bad_attitude_measurement_flag:
+    # if False:
+    if bad_attitude_measurement_flag:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
@@ -629,9 +636,8 @@ for i in range(nframes):
 
     # allow for some time for states to settle
     if i > 0:
-        if False:
-        # if bad_attitude_measurement_flag:
-            print(f"Bad attitude at t={i*dt}s")
+        # if False:
+        if bad_attitude_measurement_flag:
             H = H2
             R = R2
         # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
