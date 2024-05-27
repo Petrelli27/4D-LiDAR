@@ -349,12 +349,12 @@ for i in range(nframes):
     if i == 0:
         # z_q_k = rotm2quat(R_1)
         z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
-        z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-                                                                        1.]]))  # this rotation is to set initial orientation to match with true
+        z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]))  # this rotation is to set initial orientation to match with true
 
     else:
         z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
+        
         # z_q_k_2 = rotm2quat(R_1_2)
         # z_q_k = q_true[i]
         errors.append(np.rad2deg(error))

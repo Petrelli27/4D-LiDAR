@@ -37,28 +37,6 @@ def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
     ax.scatter(p8[0], p8[1], p8[2], color='#9b42f5')
 
 
-def custom_arccos(x):
-    """
-    Compute the arccosine of x and ensure the angle is between 0 and 90 degrees.
-
-    Parameters:
-    x (float or array-like): The input value(s) for which to compute the arccosine.
-
-    Returns:
-    float or ndarray: The arccosine of x, constrained to be between 0 and 90 degrees.
-    """
-    # Compute the arccosine in radians
-    angle_rad = np.arccos(x)
-
-    # Convert the angle to degrees
-    angle_deg = np.degrees(angle_rad)
-
-    # Adjust the angle to be within 0 to 90 degrees
-    angle_deg = np.where(angle_deg > 90, 180 - angle_deg, angle_deg)
-
-    return angle_deg
-
-
 def gram_schmidt(vectors):
     """Perform Gram-Schmidt process to create an orthonormal basis."""
     basis = []
@@ -163,7 +141,6 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
     # update points
     points = all_points[1:, :]  # one to get rid of zero zero zero from beginning
     projections = gram_schmidt(sorted_vectors)
-    projections = projections
 
     means = np.mean(points, axis=0)
     centered_data = points - means
