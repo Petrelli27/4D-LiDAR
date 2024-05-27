@@ -71,7 +71,6 @@ def gram_schmidt(vectors):
             v = v / np.linalg.norm(v)
             basis.append(v)
 
-    print(len(basis))
     if len(basis) == 2:
         basis.append(np.cross(basis[0], basis[1]))
     if len(basis) < 2:
@@ -135,18 +134,9 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False):
                 vecj = normal_vecj / np.linalg.norm(normal_vecj)
                 ranking[ix, jx] = custom_arccos(np.dot(veci, vecj))
 
-    print(ranking)
-    rankings = np.sum(ranking, axis=0)
-    print(rankings)
-    normal_vecs = np.array(normal_vecs)
 
-    # order of planes is red green blue magenta
-    if len(remaining_points.points) > 0:
-        remaining_points.paint_uniform_color([0, 0, 0])
-        all_planes.append(remaining_points)
-        o3d.visualization.draw_geometries(all_planes)
-    else:
-        o3d.visualization.draw_geometries(all_planes)
+    rankings = np.sum(ranking, axis=0)
+    normal_vecs = np.array(normal_vecs)
 
     # Pair the vectors with their corresponding values
     paired_list = list(zip(rankings, normal_vecs))
@@ -186,23 +176,35 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False):
     c_y = sum(rrc[1, :]) / len(rrc[1, :])
     c_z = sum(rrc[2, :]) / len(rrc[2, :])
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot([0, projections[0, 0]], [0, projections[0, 1]], [0, projections[0, 2]], color='red')
-    ax.plot([0, projections[1, 0]], [0, projections[1, 1]], [0, projections[1, 2]], color='red')
-    ax.plot([0, projections[2, 0]], [0, projections[2, 1]], [0, projections[2, 2]], color='red')
-    ax.plot([0, sorted_vectors[0, 0]], [0, sorted_vectors[0, 1]], [0, sorted_vectors[0, 2]], color='blue')
-    ax.plot([0, sorted_vectors[1, 0]], [0, sorted_vectors[1, 1]], [0, sorted_vectors[1, 2]], color='blue')
-    if len(sorted_vectors) > 2:
-        ax.plot([0, sorted_vectors[2, 0]], [0, sorted_vectors[2, 1]], [0, sorted_vectors[2, 2]], color='blue')
-    ax.scatter(centered_data[0, :], centered_data[1, :], centered_data[2, :], color='black', s=1)
-    associatedBbox_2 = rrc.T - means
-    associatedBbox_2 = associatedBbox_2.T
-    drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
-                  associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
-                  'orange', 2)
+    if False:
 
-    plt.show()
+        # order of planes is red green blue magenta
+        if len(remaining_points.points) > 0:
+            remaining_points.paint_uniform_color([0, 0, 0])
+            all_planes.append(remaining_points)
+            o3d.visualization.draw_geometries(all_planes)
+        else:
+            o3d.visualization.draw_geometries(all_planes)
+
+        print(ranking)
+        print(rankings)
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot([0, projections[0, 0]], [0, projections[0, 1]], [0, projections[0, 2]], color='red')
+        ax.plot([0, projections[1, 0]], [0, projections[1, 1]], [0, projections[1, 2]], color='red')
+        ax.plot([0, projections[2, 0]], [0, projections[2, 1]], [0, projections[2, 2]], color='red')
+        ax.plot([0, sorted_vectors[0, 0]], [0, sorted_vectors[0, 1]], [0, sorted_vectors[0, 2]], color='blue')
+        ax.plot([0, sorted_vectors[1, 0]], [0, sorted_vectors[1, 1]], [0, sorted_vectors[1, 2]], color='blue')
+        if len(sorted_vectors) > 2:
+            ax.plot([0, sorted_vectors[2, 0]], [0, sorted_vectors[2, 1]], [0, sorted_vectors[2, 2]], color='blue')
+        ax.scatter(centered_data[0, :], centered_data[1, :], centered_data[2, :], color='black', s=1)
+        associatedBbox_2 = rrc.T - means
+        associatedBbox_2 = associatedBbox_2.T
+        drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2], associatedBbox_2[:, 3],
+                      associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
+                      'orange', 2)
+
+        plt.show()
 
     # ax.scatter(c_x, c_y, c_z, color='b', linewidth=4)
     # evec is aligned with the point cloud and bbox

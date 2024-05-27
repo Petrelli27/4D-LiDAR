@@ -1,0 +1,1093 @@
+import copy
+import matplotlib.pyplot as plt
+from mytools import *
+import numpy as np
+import boundingbox
+from estimateOmega import estimate_LLS, estimate_kabsch, estimate_rotation_B
+from associationdata import rotation_association
+import pickle
+import scipy
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
+
+
+def sum_of_sinusoids(t_fit, *params_fit):
+    y_fit = np.zeros_like(t_fit)
+    num_sinusoids = (len(params_fit) - 2) // 2
+    for i in range(num_sinusoids):
+        A = params_fit[0]
+        omega = params_fit[2*i + 2]
+        phi = params_fit[1]
+        C = params_fit[2*i + 3]
+        y_fit += A * np.sin(omega * t_fit + phi) + C
+    return y_fit
+
+
+def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_skip, true, params_ini):
+
+    nframes = len(y)
+    time_interval = (nframes - 1) * dt
+    y_orig = y.copy()
+    t = np.linspace(start=start_t, stop=start_t + time_interval, num=nframes)
+    y = y - estimated
+
+    # Compute the FFT
+    y_fft = np.fft.fft(y)
+    freq = np.fft.fftfreq(nframes, d=t[1] - t[0])
+    y_fft = y_fft[freq > freq_threshold]
+    freq = freq[freq > freq_threshold]
+
+    # Compute the magnitudes of the FFT
+    magnitudes = np.abs(y_fft)
+
+    # Only consider the positive frequencies (first half of the FFT result)
+    positive_frequencies = freq
+    positive_magnitudes = magnitudes
+
+    # Find the peaks in the FFT magnitude spectrum
+    peaks, _ = find_peaks(positive_magnitudes)
+
+    # Extract peak magnitudes and their corresponding frequencies
+    peak_magnitudes = positive_magnitudes[peaks]
+    peak_frequencies = positive_frequencies[peaks]
+
+    indices = np.arange(-1, -num_sinusoids * freq_skip - freq_skip, -freq_skip)
+    top_peak_indices = np.argsort(peak_magnitudes)[indices[::-1]][::-1]
+
+    # Extract the top three peak frequencies and their magnitudes
+    top_frequencies = peak_frequencies[top_peak_indices]
+    top_magnitudes = peak_magnitudes[top_peak_indices]
+
+    initial_amplitude = max(y) - min(y)
+    initial_phase = 0
+    initial_constant = max(y)
+    initial_frequencies = top_frequencies
+
+    initial_guess = []
+    if len(params_ini) == 0:
+        for index in range(0, num_sinusoids):
+            if index == 0:
+                initial_guess.append(initial_amplitude)
+                initial_guess.append(initial_phase)
+                initial_guess.append(initial_frequencies[index])
+                initial_guess.append(initial_constant)
+            else:
+                initial_guess.append(initial_frequencies[index])
+                initial_guess.append(initial_constant)
+    else:
+        initial_guess = params_ini
+
+    # Perform the curve fitting
+    params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
+    constant = max(sum_of_sinusoids(t, *params))
+    # print(constant)
+
+    if True:
+    # if False:
+        # Plot the frequency spectrum
+        plt.figure()
+        plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
+        plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top peaks')
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('Magnitude')
+        plt.title('Frequency Spectrum')
+        plt.legend()
+
+        # with respect to true
+        plt.figure()
+        plt.scatter(t, y_orig - true, s=3, label='Data')
+        plt.plot(t, sum_of_sinusoids(t, *params))
+        plt.plot(t, sum_of_sinusoids(t, *params) + estimated - true, label='Fitted sum of sinusoids', color='red')
+        plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - true + constant, s=3, label='Bias corrected', color='orange')
+        plt.plot(t, estimated - true, label='Estimated', linestyle='--', color='green')
+        plt.legend()
+
+        # with respect to estimated
+        plt.figure()
+        plt.scatter(t, y_orig - estimated, s=3, label='Data')
+        plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
+        plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated + constant, s=3, label='Bias corrected', color='orange')
+        plt.plot(t, true - estimated, label='True', linestyle='--', color='green')
+        plt.legend()
+        #
+        # print(np.mean(y_orig - true))
+        # print(np.mean(y_orig - (sum_of_sinusoids(t, *params)) - true))
+        # print(np.mean(y_orig - sum_of_sinusoids(t, *params) - estimated))
+
+
+        #
+        plt.figure()
+        t = np.arange(0., 1000., .05)
+        plt.plot(t, sum_of_sinusoids(t, *params))
+        plt.show()
+
+    return params, constant
+
+
+def correct_bias(z_p_k_meas, curr_i, dt_here, parameters, constants, R_i_L_to_B, R_i_B_to_L):
+    # correct bias
+    bias_z = sum_of_sinusoids(curr_i * dt_here, *parameters[2])
+    bias_y = sum_of_sinusoids(curr_i * dt_here, *parameters[1])
+    bias_x = sum_of_sinusoids(curr_i * dt_here, *parameters[0])
+    z_p_k_B = R_i_L_to_B @ z_p_k_meas
+    z_p_k_B[2] = z_p_k_B[2] + constants[2]
+    # z_p_k_B[0] = z_p_k_B[0] - bias_x
+    # z_p_k_B[1] = z_p_k_B[1] - bias_y
+    z_p_k_L = R_i_B_to_L @ z_p_k_B
+
+    return z_p_k_L
+
+
+def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
+    # z1 plane boundary
+    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p4[0]], [p3[1], p4[1]], [p3[2], p4[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p1[0]], [p4[1], p1[1]], [p4[2], p1[2]], color=color, linewidth=linewidth)
+
+    # z1 plane boundary
+    ax.plot([p5[0], p6[0]], [p5[1], p6[1]], [p5[2], p6[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p6[0], p7[0]], [p6[1], p7[1]], [p6[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p7[0], p8[0]], [p7[1], p8[1]], [p7[2], p8[2]], color=color, linewidth=linewidth)
+    ax.plot([p8[0], p5[0]], [p8[1], p5[1]], [p8[2], p5[2]], color=color, linewidth=linewidth)
+
+    # Connecting
+    ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color=color, linewidth=linewidth)  # W
+    ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color, linewidth=linewidth)
+    ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color, linewidth=linewidth)
+
+    ax.scatter(p1[0], p1[1], p1[2], color='b')
+    ax.scatter(p2[0], p2[1], p2[2], color='g')
+    ax.scatter(p3[0], p3[1], p3[2], color='r')
+    ax.scatter(p4[0], p4[1], p4[2], color='c')
+    ax.scatter(p5[0], p5[1], p5[2], color='m')
+    ax.scatter(p6[0], p6[1], p6[2], color='y')
+    ax.scatter(p7[0], p7[1], p7[2], color='k')
+    ax.scatter(p8[0], p8[1], p8[2], color='#9b42f5')
+
+
+def skew(vector):
+    vector = list(vector)
+    return np.array([[0, -vector[2], vector[1]],
+                     [vector[2], 0, -vector[0]],
+                     [-vector[1], vector[0], 0]])
+
+
+def rodrigues(omega, dt):
+    e_omega = omega / np.linalg.norm(omega)  # Unit vector along omega
+    phi = np.linalg.norm(omega) * dt
+    ee_t = np.matmul(e_omega.reshape(len(e_omega), 1), e_omega.reshape(1, len(e_omega)))
+    e_tilde = skew(e_omega)
+    R = ee_t + (np.eye(len(e_omega)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
+    return R
+
+
+def verticeupdate(dt, x_k):
+    # Decompose the state vector
+    p_k = x_k[:3]
+    v_k = x_k[3:6]
+    omega_k = x_k[6:9]
+    p1_k = x_k[9:12]
+
+    # Rotation matrix - rodrigues formula
+    R_k_kp1 = rodrigues(omega_k, dt)
+    R_k_kp1 = R_k_kp1
+
+    # Translate vertex to origin
+    p1_ko = p1_k - p_k
+
+    # Rotate vertices
+    p1_kp1o = np.matmul(R_k_kp1, p1_ko.reshape(len(p1_ko), 1))
+
+    # Translate vertex back to new expected origin
+    p1_kp1 = (p1_kp1o.T + p_k + v_k * dt).ravel()
+
+    return p1_kp1, R_k_kp1
+
+
+def orientationupdate(dt, x_k):
+    # Decompose the state vector
+    omega_k = x_k[6:9]
+    q_k = x_k[12:16]
+    qw = q_k[0];
+    qx = q_k[1];
+    qy = q_k[2];
+    qz = q_k[3]
+
+    # hamilton = np.array([-omega_k[0] * q_k[1] - omega_k[1] * q_k[2] - omega_k[2] * q_k[3],
+    #             omega_k[0] * q_k[0] + omega_k[2] * q_k[2] - omega_k[1] * q_k[3],
+    #             omega_k[1] * q_k[0] - omega_k[2] * q_k[1] + omega_k[0] * q_k[3],
+    #             omega_k[2] * q_k[0] + omega_k[1] * q_k[1] - omega_k[0] * q_k[2]])
+
+    dqkdt = 0.5 * np.array([[-qx, -qy, -qz],
+                            [qw, qz, -qy],
+                            [-qz, qw, qx],
+                            [qy, -qx, qw]]) @ omega_k
+
+    q_kp1 = normalize_quat(dqkdt * dt + q_k)
+    q_kp1_pos = q_kp1  # if q_kp1[0] >=0 else -q_kp1
+    return q_kp1_pos
+
+
+def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
+    Rot_0 = quat2rotm(q_ini)
+    Rot_0 = np.eye(3)
+    # print(Rot_0)
+    q_s = []
+    for i in range(len(debris_pos)):
+        # get rotation matrix for that timestep
+        Rot_i = rodrigues(omega_true, dt * i)
+        q_i = rotm2quat(Rot_i @ Rot_0)
+        q_s.append(q_i)
+
+    return q_s
+
+
+# initialize debris position, velocity and orientation
+O_B = np.array([0, 0, 0])
+O_L = np.array([0, 0, 0])
+
+with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+    # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+    # with open('sim_new_conditions.pickle', 'rb') as sim_data:
+    data = pickle.load(sim_data)
+XBs = data[0]
+YBs = data[1]
+ZBs = data[2]
+PBs = data[3]
+VBs = data[4]
+
+debris_pos = data[5]
+debris_vel = data[6]
+Rot_L_to_B = data[7]
+Rot_B_to_L = [np.transpose(r) for r in Rot_L_to_B]
+omega_L = data[8]
+dt = data[9]
+
+# Estimation Loop
+XLs = []  # store point cloud x in L
+YLs = []
+ZLs = []
+PLs = []  # store x, y, z point cloud in L
+VLs = VBs  # store velocity point cloud
+x_s = []  # store states over time
+z_s = []  # store measurements over time
+P_s = []  # store covariances in time
+errors = [0]
+nframes = len(VBs)
+
+# Running the simulation - Initializations
+
+# Initializations in L Frame
+vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
+omega_0 = [1., 1., 1.]
+omega_true = [1., 1., 1.]
+q_ini = [1., 0., 0., 0.]
+q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+p_0 = np.array([-170., -350., -20.])
+p1_0 = p_0 + np.array([-2 / 2, -2 / 2, -2 / 2])
+x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
+num_states = len(x_0)
+
+# Initial covariance
+P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25,
+               0.25])  # Initial Covariance matrix
+
+# Process noise covariance matrix
+qp = 0.000001
+qv = 0.000005
+qom = 0.0005
+qp1 = 0.05
+qq = 0.00005
+Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
+
+# Measurement noise covariance matrix
+p = 0.05
+om = .25
+p1 = 500
+q = 0.00004
+R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+
+# Measurement matrix
+H = np.zeros([len(P_0) - 3, len(P_0)])  # no measuring of velocity
+H[0:3, 0:3] = np.eye(3)
+H[3:, 6:] = np.eye(10)
+bad_attitude_measurement_flag = False
+
+# Kabsch estimation parameters
+n_moving_average = 40
+settling_time = 500
+# Record keeping for angular velocity estimate
+omegas_kabsch_b = np.zeros((nframes, 3))
+omegas_lls_b = np.zeros((nframes, 3))
+omega_kabsch_b_box = np.zeros((n_moving_average, 3))
+
+# Get Final measurement vectors
+q_kp1s = []
+z_p_s = [p_0]
+zv_mags = []
+z_omegas = []
+z_v_s = []
+z_s = []
+x_s = [x_0]
+P_s = []
+original_pos_meas = []
+estimated_pos = [p_0]
+
+# bias config
+interval_time = 0  # for bias part
+done = 0
+params_x = []
+params_y = []
+params_z = []
+centroids_inB = []
+true_pos_inB = []
+
+# ukf weight values
+alpha = 1e-1
+beta = 2
+kappa = 0
+# cholesky decomposition to calc sigmapoints
+epsilon = 1e-10  # constant to ensure positive defineteness
+dimL = len(x_0)
+lambd = alpha ** 2 * (dimL + kappa) - dimL
+w_0_m = lambd / (lambd + dimL)  # first weight for computing the mean
+w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
+w_0_c = w_0_m + (1 - alpha ** 2 + beta)  # first weight for computing covariance
+w_j_c = w_j_m
+tolerance = 1e-1  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
+
+# barfoot
+# lambd = 2  # formerly kappa
+# w_0_m = lambd / (lambd + dimL) # first weight for computing the mean
+# w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
+# w_0_c = w_0_m  # first weight for computing covariance
+# w_j_c = w_j_m
+
+for i in range(nframes):
+
+    # Set initial states to measurements
+    if i == 0:
+        x_k = x_0.copy()  # state
+        P_k = P_0.copy()  # covariance matrix
+
+    # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
+    else:
+        # state vector as mean for sigmapoint transform
+        mu_sp = x_k.copy()
+
+        # covariance matrix for sigmapoint transform
+        sigma_zz = P_k.copy()
+
+        # cholesky decomposition for lower triangular matrix
+        try:
+            L = scipy.linalg.cholesky(sigma_zz, lower=True)
+        except numpy.linalg.LinAlgError:  # happens when the diagonal is zero but numerically speaking has negative elements
+            np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
+            L = scipy.linalg.cholesky(sigma_zz, lower=True)
+
+        # initial sigmapoint
+        sp_0 = mu_sp
+
+        # other sigmapoints
+        sp_s = [sp_0]
+        sqrt_term = np.sqrt(dimL + lambd)
+        for idx in range(0, dimL):
+            col_i_L = L[:, idx]
+            sp_i = mu_sp + sqrt_term * col_i_L
+            sp_s.append(sp_i)
+        for idx in range(0, dimL):
+            col_i_L = L[:, idx]
+            sp_i_L = mu_sp - sqrt_term * col_i_L
+            sp_s.append(sp_i_L)
+
+        # pass each point through prediction model
+        x_kp1 = np.zeros((num_states,))
+        sp_kp1s = []
+        for jdx, sp in enumerate(sp_s):
+
+            # Decompose the state vector
+            p_k = sp[:3]
+            v_k = sp[3:6]
+            omega_k = sp[6:9]
+            p1_k = sp[9:12]
+            q_k = sp[12:]
+
+            ##############
+            # Prediction
+            ##############
+
+            # Position update
+            p_kp1 = v_k * dt + p_k
+
+            # Velocity update
+            v_kp1 = v_k.copy()
+
+            # Angular velocity update
+            omega_kp1 = omega_k.copy()
+
+            # Vertex update
+            p1_kp1, R_k_kp1 = verticeupdate(dt, sp)
+
+            # Orientation Update
+            if i == 1:
+                q_kp1s.append(q_ini)
+
+            q_kp1 = orientationupdate(dt, sp)
+            q_kp1s.append(q_kp1)
+
+            sp_kp1_jdx = np.hstack([p_kp1, v_kp1, omega_kp1, p1_kp1, q_kp1]).ravel()
+            sp_kp1s.append(sp_kp1_jdx)
+
+            # weighted sum of sigma points to get updated state
+            if jdx == 0:
+                x_kp1 += w_0_m * sp_kp1_jdx
+            else:
+                x_kp1 += w_j_m * sp_kp1_jdx
+
+        z_v_s.append(x_k[3:6])
+
+        # update covariance
+        P_kp1 = np.zeros((num_states, num_states))
+        for kdx, sp in enumerate(sp_kp1s):
+            diff = sp - x_kp1
+            if kdx == 0:
+                P_kp1 += w_0_c * np.outer(diff, diff.T)
+            else:
+                P_kp1 += w_j_c * np.outer(diff, diff.T)
+
+        # add proces noise
+        P_kp1 += Q
+
+        # try and smooth out covariance off diagonals to ensure symmetry
+        P_kp1 = 0.5 * P_kp1 + 0.5 * P_kp1.T
+
+    #######################
+    # Measurements
+    #######################
+
+    PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
+    # find bounding box from points
+    XLs.append(PLs[i][:, 0])
+    YLs.append(PLs[i][:, 1])
+    ZLs.append(PLs[i][:, 2])
+    X_i = XLs[i]
+    Y_i = YLs[i]
+    Z_i = ZLs[i]
+
+    # Return bounding box and centroid estimate of bounding box
+    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True)
+
+    ############
+    # bias removal
+    ############
+
+    original_pos_meas.append(z_p_k)
+    centroids_inB.append(Rot_L_to_B[i] @ z_p_k)
+    true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
+
+    curr_t = i * dt
+    t_start = 20  # when the first bias calculation should be initiated
+    t_interval = 20  # how many seconds of data should be collected each time
+
+    # grab data every interval
+    if curr_t >= (t_start + t_interval):
+        if (curr_t + t_start) % t_interval == 0 and done == 0:  # grab new data
+            interval_time = curr_t - t_interval
+            z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
+            z = np.array(z_in_b)
+            z = z[int(interval_time / dt):, :]
+            estimated_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(estimated_pos)])
+            estimated = np.array(estimated_inB)
+            estimated = estimated[int(interval_time / dt):, :]
+            true_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(debris_pos)])
+            true = np.array(true_inB)
+            true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
+
+            thresh = 0.05  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
+            num_sin = 7  # number of sinusoids to use to fit the data
+            skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
+            params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+            # params_x, constant_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
+            # params_y, constant_y = remove_bias(interval_time, dt, z[:, 1], estimated[:, 1], num_sin, thresh, skip, true[:, 1], params_y)
+            parameters = [params_x, params_y, params_z]
+
+            constants = [0, 0, constant_z]
+            done = 1
+
+        z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
+        z_p_k = z_p_k_z
+
+    #####################
+
+    # Orientation association
+    # R_1 is obtained from bounding box
+    if i == 0:
+        # z_q_k = rotm2quat(R_1)
+        z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+                                                                        1.]]))  # this rotation is to set initial orientation to match with true
+        z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+                                                                            1.]]))  # this rotation is to set initial orientation to match with true
+
+    else:
+        z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
+        z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
+        # z_q_k_2 = rotm2quat(R_1_2)
+        z_q_k = q_true[i]
+        errors.append(np.rad2deg(error))
+        LWD = 2 * quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+        L = LWD[0];
+        W = LWD[1];
+        D = LWD[2]
+        predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)  # just use the predicted box instead
+
+    # first use q from R_1 to get L,W,D
+    # then use z_q_k (not perfectly aligned) to get
+    associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k,
+                                                        R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+
+    # for frame to frame visualzation
+    # if i>0 and i%1==0:
+    if False:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        # ax.legend()
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
+
+        # width = orange to green, blue to green
+        # length = orange to cyan, blue to cyan
+        # height = orange to magenta, blue to magenta
+        ax.title.set_text(
+            f'Time={i * dt}s' + '\n' + f'Pred. Length={round(L, 2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
+
+        # plot lidar point cloud
+        ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+        ax.set_aspect('equal', 'box')
+
+        # plot associated box from PCA
+        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+                      associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
+
+        # plot associated box from RANSAC
+        drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
+                      associatedBbox_2[:, 3],
+                      associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
+                      'orange', 2)
+
+        # plot predicted box from ekf
+        # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
+        #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+
+        # plot the vertex #1 after association from predicted and measured boxes in red and blue, respectively
+        # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='red', label='Vertex 1 Pred.')
+        # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
+        #            label='Vertex 1 Meas.')
+        ax.legend()
+
+        # for visualizing orientations
+        Rot_measured = quat2rotm(z_q_k)  # measurement being used for EKF
+        Rot_measured_2 = quat2rotm(z_q_k_2)  # alternate measurement, associated
+        Rot_measured_2 = R_1_2  # alternate measurement, not associated
+        R_estimated = quat2rotm(q_kp1)  # predicted from the ekf
+        R_true = quat2rotm(q_true[i, :])  # true orientation
+
+        # plot measured being used by EKF in blue
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
+                [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
+                color='blue', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
+                [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
+                color='blue', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
+                [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
+                color='b', linewidth=4)
+
+        # plot measured altnernate in orange
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                color='orange', linewidth=4)
+
+        # plot current estimate of ekf in red
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+        #         color='red', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+        #         color='red', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+        #         color='red', linewidth=4)
+
+        # plot true in green
+        ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
+                [z_p_k[2], z_p_k[2] + R_true[2, 0]],
+                color='green', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
+                [z_p_k[2], z_p_k[2] + R_true[2, 1]],
+                color='green', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
+                [z_p_k[2], z_p_k[2] + R_true[2, 2]],
+                color='green', linewidth=4)
+
+        # black is axis of rotation
+        # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+        #         [z_p_k[2], z_p_k[2] + 1],
+        #         color='black', linewidth=4)
+
+        # plot centroids
+        # ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
+        # ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
+        # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')
+
+        plt.show()
+
+    # find angular velocity from LOS velocities
+    if i > 0:
+        # 1. Linear Least Squares
+        omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i])
+        omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
+
+    # 2. Rotation of B Frame
+    omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+
+    # 3. Kabsch
+    ################ to use Kabsch you need i > 0, to wait for state initializations?
+    if i == 0:
+        omega_los_L = np.array([0, 0, 0])
+        prev_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
+    else:
+        cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
+        # rotate previous box with everything else
+        # prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
+        omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+        prev_box_B = cur_box_B  # for next iteration
+
+        # using moving average to smooth out omega_los_B
+        omega_kabsch_b_box[i % n_moving_average] = omega_los_B
+        if i < n_moving_average:
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i + 1], axis=0)
+        else:
+            omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+        omega_los_L = Rot_B_to_L[i] @ omega_los_B_averaged
+
+    # 3b Kabsch alternate
+    # this should be done in the B frame
+    # omega_los_Ls = np.zeros([n_moving_average, 3])
+    # if i==0:
+    #     omega_los_L = np.array([0,0,0])
+    # else:
+    #     prev_q = z_s[i-1][9:]
+    #     cur_q = z_q_k
+    #     prev_R_in_B = Rot_L_to_B[i] @ quat2rotm(prev_q)
+    #     cur_R_in_B = Rot_L_to_B[i] @ quat2rotm(cur_q)
+    #     prev_R_in_B_after_LLS = prev_R_in_B @ rodrigues(omega_LLS_B, dt)
+    #     net_R_in_B = (prev_R_in_B_after_LLS.T) @ (cur_R_in_B)
+    #     rotation_axis_bbox, rotation_angle_bbox = R_to_axis_angle(net_R_in_B)
+    #     omega_bbox = rotation_axis_bbox * rotation_angle_bbox / dt
+    #     # take only the z_component (along LOS) of omega_bbox
+    #     omega_los_B_q = np.array([0,0,omega_bbox[2]])
+    #     omega_los_L_q = (Rot_B_to_L[i] @ omega_los_B_q.reshape([3,1])).reshape(3)
+    #     omega_los_Ls[i%n_moving_average] = omega_los_L_q
+    #     if i < n_moving_average:
+    #         omega_los_L_averaged = np.mean(omega_los_Ls[0:i+1], axis=0)
+    #     else:
+    #         omega_los_L_averaged = np.mean(omega_los_Ls, axis=0)
+
+    # Combine angular velocity estimates
+    if i == 0:
+        z_omega_k = omega_0
+    elif i <= settling_time:
+        z_omega_k = omega_LLS + omega_L_to_B  # ignores kabsch
+    else:
+        z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
+
+    #################################
+
+    # Compute Measurement Vector
+    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+
+    ##############
+    # Update - Combine Measurement and Estimates
+    ##############
+    num_meas = len(z_kp1)
+
+    if i > 0:
+        #################
+        # iterated measurement update
+        #################
+        x_op = x_kp1.copy()
+        P_op = P_kp1.copy()
+
+        current_difference = 1  # initialize to a high value so that it can enter the loop, this is the current difference between states of consecutive iterations
+
+        # iterate to desired threshold
+        while current_difference > tolerance:
+            ####################
+            # measurement update
+            ###################
+
+            # state vector as mean for sigmapoint transform
+            mu_sp_m = x_op.copy()
+
+            # stack covariance matrix with process noise
+            sigma_zz_m = P_op.copy()
+
+            # cholesky, ensure positive definiteness
+            try:
+                L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+            except numpy.linalg.LinAlgError:
+                np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
+                L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+
+            # initial sigmapoint
+            sp_0_m = mu_sp_m
+
+            # other sigmapoints
+            sp_s_m = [sp_0_m]
+            sqrt_term_m = np.sqrt(dimL + lambd)
+            for idx in range(0, dimL):
+                col_i_L_m = L_m[:, idx]
+                sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
+                sp_s_m.append(sp_i_m)
+            for idx in range(0, dimL):
+                col_i_L_m = L_m[:, idx]
+                sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
+                sp_s_m.append(sp_i_L_m)
+
+            # pass each point through measurement model
+            y_kp1_s_m = []
+
+            mu_y_kp1_m = np.zeros((num_meas,))
+            for jdx, sp_m in enumerate(sp_s_m):
+                y_kp1_m = H @ sp_m
+                if jdx == 0:
+                    mu_y_kp1_m += w_0_m * y_kp1_m
+                else:
+                    mu_y_kp1_m += w_j_m * y_kp1_m
+                y_kp1_s_m.append(y_kp1_m)
+
+            # various aposteriori covariances
+            sigma_yy = np.zeros((num_meas, num_meas))
+            sigma_xy = np.zeros((num_states, num_meas))
+            for kdx, sp in enumerate(sp_s_m):
+                diff_x_m = sp - x_kp1
+                diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
+                if kdx == 0:
+                    sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
+                    sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
+                else:
+                    sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
+                    sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
+
+            # Kalman gain
+            sigma_yy += R
+            K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
+
+            # Calculate Residual
+            res_kp1 = z_kp1 - mu_y_kp1_m
+
+            x_op_prev = x_op.copy()
+
+            # Update State
+            x_op = x_op + K_kp1 @ res_kp1
+
+            # Update Covariance
+            P_op = P_op - K_kp1 @ sigma_yy @ K_kp1.T
+
+            current_difference = np.linalg.norm(x_op - x_op_prev)
+
+        # Transfer states and covariance from kp1 to k
+        P_k = P_op.copy()
+        x_op[12:] = normalize_quat(x_op[12:])
+        x_k = x_op.copy()
+
+        # smooth out covariance off diagonals
+        P_k = 0.5 * P_k + 0.5 * P_k.T
+
+    z_s.append(z_kp1)
+
+    # Append for analysis
+    P_s.append(P_k)
+    x_s.append(x_k)
+    estimated_pos.append(x_k[:3])
+
+##############
+# Plot relevant figures
+##############
+
+
+m1 = len(x_s)
+
+z_s = padding_nan(z_s)
+x_s = np.array(x_s)
+x_s = x_s[1:, :]
+q_true = np.array(q_true)
+original_pos_meas = np.array(original_pos_meas)
+centroids_inB = np.array(centroids_inB)
+true_pos_inB = np.array(true_pos_inB)
+
+plt.rcParams.update({'font.size': 12})
+plt.rcParams['text.usetex'] = True
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 0] - true_pos_inB[:, 0])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_x$ (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 1] - true_pos_inB[:, 1])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_y$ (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 2] - true_pos_inB[:, 2])
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_z$ (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,0] - debris_pos[:,0], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 0] - debris_pos[:,0], label='Original', linewidth=1)
+
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0] - debris_pos[:,0], label='Estimated', linewidth=2)
+
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_x$ (m)')
+#plt.title('X Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,1] - debris_pos[:,1], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 1] - debris_pos[:,1], label='Original', linewidth=1)
+
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Estimated', linewidth=2)
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
+
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_y$ (m)')
+#plt.title('Y Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,2] - debris_pos[:,2], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,2] - debris_pos[:,2], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 2] - debris_pos[:,2], label='Original', linewidth=1)
+
+# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_z$ (m)')
+#plt.title('Z Position')
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.legend()
+ax.set_xlabel('x (m)')
+ax.set_ylabel('y (m)')
+ax.set_zlabel('z (m)')
+ax.scatter(debris_pos[1, 0], debris_pos[1, 1], debris_pos[1, 2], color='orange', marker='o', s=20)
+ax.scatter(debris_pos[-1, 0], debris_pos[-1, 1], debris_pos[-1, 2], color='k', marker='o', s=20)
+ax.scatter(z_s[:, 0], z_s[:, 1], z_s[:, 2], color='b', s=0.3, linewidths=0)
+ax.plot(debris_pos[:, 0], debris_pos[:, 1], debris_pos[:, 2], color='g')
+plt.legend(['Start', 'End', 'Computed Centroid Positions', 'True Centroid Positions'])
+plt.xlim([-170.5, -167.5])
+plt.ylim([-351, -306])
+ax.set_zlim(-20, -9)
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 3], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_x$ (rad/s)')
+# plt.title('$\displaystyle\Omega_x$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 4], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_y$ (rad/s)')
+# plt.title('Omega Y')
+
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 5], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle\Omega_z$ (rad/s)')
+# plt.title('Omega Z')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6] - omega_true[0], label='Error $\displaystyle\Omega_x$', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7] - omega_true[1], label='Error $\displaystyle\Omega_y$', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8] - omega_true[2], label='Error $\displaystyle\Omega_z$', linewidth=2)
+# plt.plot(np.arange(0, dt*nframes, dt), np.zeros([nframes,1]), linewidth = 1) # draw line at zero
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Angular Velocity Error (rad/s)')
+# plt.title('Angular Velocity Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 0] - debris_pos[:nframes, 0], label='Error $\displaystyle p_x$',
+         linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 1] - debris_pos[:nframes, 1], label='Error $\displaystyle p_y$',
+         linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2] - debris_pos[:nframes, 2], label='Error $\displaystyle p_x$',
+         linewidth=2)
+
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Position Error (m)')
+# plt.title('Position Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 0], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 0], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_x$ (m)')
+# plt.title('X Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 1], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 1], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 1], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_y$ (m)')
+# plt.title('Y Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 2], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle p_z$ (m)')
+# plt.title('Z Position')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3] - debris_vel[:nframes, 0], label='Error $\displaystyle v_{Tx}$',
+         linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4] - debris_vel[:nframes, 1], label='Error $\displaystyle v_{Ty}$',
+         linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5] - debris_vel[:nframes, 2], label='Error $\displaystyle v_{Tz}$',
+         linewidth=1)
+
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Velocity Error (m/s)')
+# plt.title('Velocity Errors')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3], label='Estimated')
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 0], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Tx}$ (m/s)')
+# plt.title('Velocity in X')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4], label='Estimated')
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 1], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Ty}$ (m/s)')
+# plt.title('Velocity in y')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5], label='Estimated')
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 2], label='True')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle v_{Tz}$ (m/s)')
+# plt.title('Velocity in z')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 9], label='$\displaystyle p_{1x}$')
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 10], label='$\displaystyle p_{1y}$')
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 11], label='$\displaystyle p_{1z}$')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Vertex $\displaystyle p_{1}$ Position (m)')
+# plt.title('Position of Vertice P1 overt time')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_0$')
+# plt.title('Orientation $\displaystyle q_0$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 1], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_1$')
+# plt.title('Orientation $\displaystyle q_1$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_2$')
+# plt.title('Orientation $\displaystyle q_2$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('$\displaystyle q_3$')
+# plt.title('Orientation $\displaystyle q_3$')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), errors, label='Angular Error', linewidth=1)
+plt.xlabel('Time (s)')
+plt.ylabel('Angle (degrees)')
+"""
+fig = plt.figure()
+true_b = []
+for i in range(nframes):
+    true_b.append(Rot_L_to_B[i] @ [1,1,1])
+true_b = np.array(true_b)
+plt.plot(np.arange(0, dt*nframes, dt), true_b[:,2], label='True')
+
+plt.plot(np.arange(0, dt*nframes, dt), omega_kabsch_b[:,2], label='Computed')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Angular velocity (rad/s)')
+plt.title('$\displaystyle {}^B \Omega_z$ from Kabsch')
+"""
+
+plt.show()
