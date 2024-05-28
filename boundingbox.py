@@ -67,10 +67,10 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
 
     # Apply RANSAC to segment a plane
     # Parameters
-    distance_threshold = 0.04  # Adjust based on your data
-    ransac_n = 3
+    distance_threshold = 0.2  # Adjust based on your data
+    ransac_n = 10
     num_iterations = 1000
-    min_inliers = 3  # Minimum number of inliers to consider a plane valid
+    min_inliers =  10  # Minimum number of inliers to consider a plane valid
     # Container for all planes
     all_planes = []
     all_points = np.array([0, 0, 0])  # final point cloud
