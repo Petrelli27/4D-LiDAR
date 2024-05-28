@@ -283,7 +283,7 @@ q_kp1s =[]
 metrics = []
 z_s_all = []
 for i in range(nframes):
-
+    visualize_flag = i>0 and i%300==1
     # Use first measurements for initializations of states
     if i > 0:
         # Decompose the state vector
@@ -348,7 +348,7 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, i>0 and i%500==0)
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, visualize_flag)
     # R_1_2 = R_1_2.T
     # z_p_k = debris_pos[i, :]
     # Orientation association
@@ -434,7 +434,7 @@ for i in range(nframes):
         
 
 
-    if abs(i-10)<50 and i%1000==1:
+    if visualize_flag:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -459,7 +459,7 @@ for i in range(nframes):
         #           associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7], 'orange', 2)
         
         drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
-                  associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'pink', 2)
+                  associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
 
     # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
         #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)

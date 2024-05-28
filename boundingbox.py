@@ -42,16 +42,18 @@ def gram_schmidt(vectors):
     basis = []
     for v in vectors:
         # Orthogonalize
+        if len(basis) == 3:
+            break
         for b in basis:
             v = v - np.dot(b, v) * b
         # Normalize
         if np.linalg.norm(v) > 1e-10:  # To avoid division by zero
             v = v / np.linalg.norm(v)
             basis.append(v)
+        if len(basis) == 2:
+            basis.append(np.cross(basis[0], basis[1]))
 
     # print(len(basis))
-    if len(basis) == 2:
-        basis.append(np.cross(basis[0], basis[1]))
     if len(basis) < 2:
         print('Error: not enough basis vectors')
     return np.array(basis)
