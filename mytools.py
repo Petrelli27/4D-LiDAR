@@ -58,13 +58,14 @@ def similar_quat(q1, q_ref):
 def quat_angle_diff(q1, q2):
     R1 = quat2rotm(q1)
     R2 = quat2rotm(q2)
-    R_diff = R1.T @ R2
-    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
-    return abs(angle_diff)
+    return rotm_angle_diff(R1, R2)
 
 def rotm_angle_diff(R1, R2):
     R_diff = R1.T @ R2
-    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    cos_value = (np.trace(R_diff) - 1) / 2
+    if abs(cos_value - 1.0) < 1e-6:
+        cos_value = np.sign(cos_value) * 1
+    angle_diff = np.arccos(cos_value)
     return abs(angle_diff)
 
 def sigmoid(x, a=0.9, k=7):
@@ -116,3 +117,8 @@ def custom_arccos(x):
     angle_deg = np.where(angle_deg > 90, 180 - angle_deg, angle_deg)
 
     return angle_deg
+
+def find_min_index(R):
+    k = R.argmin()
+    ncol = R.shape[1]
+    return k/ncol, k%ncol

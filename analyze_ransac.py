@@ -252,10 +252,10 @@ qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.00025
-om = .05
+p = 0.25
+om = 0.5
 p1 = 1
-q = 0.0004
+q = 0.4
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -273,7 +273,7 @@ H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
 n_moving_average = 40
-settling_time = 500
+settling_time = 200
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -283,7 +283,7 @@ q_kp1s =[]
 metrics = []
 z_s_all = []
 for i in range(nframes):
-    visualize_flag = i>0 and i%300==1
+    visualize = abs(i-200)<10 and i%2==0
     # Use first measurements for initializations of states
     if i > 0:
         # Decompose the state vector
@@ -348,28 +348,36 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, visualize_flag)
-    # R_1_2 = R_1_2.T
-    # z_p_k = debris_pos[i, :]
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, visualize)
+    
+    R_12_diff = R_1.T @ R_1_2
+    closest_axes_angle = np.max(np.abs(R_12_diff))
+    flattened_index = np.argmax(np.abs(R_12_diff))
+    closest_axes_index = (flattened_index//3, flattened_index%3)
+    axis_to_rotate = np.cross(R_1[:,closest_axes_index[0]], R_1_2[closest_axes_index[1],:])
+    axis_to_rotate = axis_to_rotate/np.linalg.norm(axis_to_rotate)
+    R_3 = rodrigues(axis_to_rotate, closest_axes_angle) @ R_1
+
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
         # z_q_k = rotm2quat(R_1)
         z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]) )  # this rotation is to set initial orientation to match with true
         z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]))  # this rotation is to set initial orientation to match with true
+        z_q_k_3 = rotm2quat(R_3 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0., 1.]]))  # this rotation is to set initial orientation to match with true
         z_q_k = z_q_k_1.copy()
         z_pi_k = z_pi_k_1.copy()
         z_p_k = z_p_k_1.copy()
         perfect_metric = False
+        attitude_diff_metric = False
         is_z_q_k_good = True
         is_z_q_k_2_good = True
+        z_q_prev = z_q_k.copy()
     else:
         z_q_k_1, _, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
-        if quat_angle_diff(z_q_k_1, q_true[i,:]) > np.deg2rad(25):
-            perfect_metric = True
-        else:
-            perfect_metric = False
+        z_q_k_3, _, _ = rotation_association(q_kp1, R_3)
+        perfect_metric = (quat_angle_diff(z_q_k_3, q_true[i,:]) > np.deg2rad(25))
 
         if np.max(R_1.T @ R_1_2) < np.cos(np.deg2rad(35)):
             # bad z_q_k
@@ -404,13 +412,15 @@ for i in range(nframes):
         elif (not is_z_q_k_good) and (not is_z_q_k_2_good):
             # both are bad
             bad_attitude_measurement_flag = True
-    metrics.append([int(perfect_metric), int(not is_z_q_k_good)])        
-    if i < 100: bad_attitude_measurement_flag = False # don't skip things until 5 seconds in
+        attitude_diff_metric = rotm_angle_diff(quat2rotm(z_q_k_3), (rodrigues(x_kp1[6:9],dt))@ quat2rotm(z_q_prev)) > np.deg2rad(35)
+    metrics.append([int(perfect_metric), 2*int(not is_z_q_k_good), 3*int(attitude_diff_metric)])
+    test_metric = not is_z_q_k_good      
+    if i < settling_time: test_metric = False # don't skip things at the beginning
     if i>0:
         LWD = 2*quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0]; W = LWD[1]; D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)# just use the predicted box instead
-    if i==0 or (not perfect_metric):
+    if i==0 or (not test_metric):
         # first use q from R_1 to get L,W,D
         # then use z_q_k (not perfectly aligned) to get 
         associatedBbox_1, Lm_1, Wm_1, Dm_1 = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1, R_1)  # L: along x-axis, W: along y-axis D: along z-axis
@@ -427,14 +437,14 @@ for i in range(nframes):
         z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox[:, 0]
     else:
-        print(f"bad attitude at t={i*dt}")
+        print(f"bad attitude at t={i*dt:.2f}")
         associatedBbox = predictedBbox
         z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox[:,0]
         
 
 
-    if visualize_flag:
+    if visualize:
     # if False:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -476,6 +486,7 @@ for i in range(nframes):
 
         Rot_measured_2 = quat2rotm(z_q_k_2)
         Rot_measured_2 = R_1_2
+        Rot_measured_3 = quat2rotm(z_q_k_3)
         # normal_vecs = normal_vecs.T
 
         R_estimated = quat2rotm(q_kp1)
@@ -492,14 +503,14 @@ for i in range(nframes):
         color='b', linewidth=4)
 
         # plot measured
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
-                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_3[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_3[1, 0]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_3[2, 0]],
                 color='red', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
-                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_3[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_3[1, 1]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_3[2, 1]],
                 color='red', linewidth=4)
-        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
-                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_3[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_3[1, 2]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_3[2, 2]],
                 color='red', linewidth=4)
 
         # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
@@ -637,10 +648,10 @@ for i in range(nframes):
 
     # Compute Measurement Vector
     # if False:
-    if perfect_metric:
+    if test_metric:
         z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
     else:
-        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k_3])
 
     # Set initial states to measurements
     if i == 0:
@@ -653,7 +664,7 @@ for i in range(nframes):
     # allow for some time for states to settle
     if i > 0:
         # if False:
-        if perfect_metric:
+        if test_metric:
             H = H2
             R = R2
         # if abs(np.linalg.norm(z_p_k - p_kp1)) > 0.7:
@@ -670,6 +681,7 @@ for i in range(nframes):
         # Update State
         x_kp1 = x_kp1 + np.matmul(K_kp1, res_kp1)
         x_kp1[12:] = similar_quat(normalize_quat(x_kp1[12:]), x_k[12:16])
+        z_q_prev = z_q_k_3.copy()
 
         # Update Covariance
         P_kp1 = np.matmul(np.eye(len(K_kp1)) - K_kp1 @ H, P_kp1)
@@ -879,8 +891,9 @@ plt.ylabel('$\displaystyle q_3$')
 
 metrics = np.array(metrics)
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), metrics[:,0], label='Perfect Metric', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), metrics[:,1], label='Our Metric', linewidth=1)
+plt.scatter(np.arange(0, dt*nframes, dt), metrics[:,0], label='Perfect Metric', linewidth=1)
+plt.scatter(np.arange(0, dt*nframes, dt), metrics[:,1], label='PCA and RANSAC Axis Alignment Metric', linewidth=1)
+plt.scatter(np.arange(0, dt*nframes, dt), metrics[:,2], label='Rotation Angle Metric', linewidth=1)
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Metric')
