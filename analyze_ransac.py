@@ -248,12 +248,17 @@ qp = 0.0000001
 qv = 0.0000005
 qom = 0.005
 qp1 = 0.05
-qq = 0.000005
+qq = 0.00005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
+<<<<<<< Updated upstream
 p = 0.25
 om = 0.5
+=======
+p = 0.05
+om = 0.07
+>>>>>>> Stashed changes
 p1 = 1
 q = 0.4
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
@@ -282,8 +287,15 @@ omega_kabsch_b_box = np.zeros((n_moving_average,3))
 q_kp1s =[]
 metrics = []
 z_s_all = []
+measurement_used = np.zeros((nframes))
 for i in range(nframes):
+<<<<<<< Updated upstream
     visualize = abs(i-200)<10 and i%2==0
+=======
+    # print(i)
+    visualize_flag = i>0 and abs(i*dt-58)<2 and i%2==0
+    # visualize_flag = False
+>>>>>>> Stashed changes
     # Use first measurements for initializations of states
     if i > 0:
         # Decompose the state vector
@@ -430,6 +442,7 @@ for i in range(nframes):
         # z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
         # associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k , z_p_k , R_1)
 
+<<<<<<< Updated upstream
         # verifying metric usefulness
         associatedBbox, Lm, Wm, Dm = associatedBbox_1, Lm_1, Wm_1, Dm_1
         z_q_k = z_q_k_1.copy()
@@ -442,6 +455,118 @@ for i in range(nframes):
         z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox[:,0]
         
+=======
+    # first use q from R_1 to get L,W,D
+    # then use z_q_k (not perfectly aligned) to get
+    associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1,
+                                                                R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    associatedBbox_2, Lm_2, Wm_2, D_m2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
+    z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+
+    if i == 0:
+        associatedBbox = associatedBbox_1.copy()
+        z_p1_k = associatedBbox_1[:, 0]
+
+    if i > 0:
+        ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
+        pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
+        ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
+        ran_pred_thresh = 15
+        pca_pred_thresh = 15
+        ran_pca_thresh = 15
+
+        if ransac_pred_diff > ran_pred_thresh:
+            if pca_pred_diff > pca_pred_thresh:
+                if ransac_pca_diff > ran_pca_thresh: # ransac, pca and prediction are all off from one another
+                    if ransac_pca_diff > ransac_pred_diff:
+                        z_q_k = z_q_k_2.copy()
+                        z_pi_k = z_pi_k_2.copy()
+                        z_p_k = z_p_k_2.copy()
+                        z_p1_k = associatedBbox_2[:, 0]
+                        associatedBbox = associatedBbox_2.copy()
+                        adapt = False
+                        measurement_used[i] = 1
+                        # print("using ransac")
+                    else:
+                        # trust prediction
+                        associatedBbox = predictedBbox.copy()
+                        z_p_k = z_p_k_1.copy()
+                        z_p1_k = associatedBbox[:, 0]
+                        adapt = True
+                        measurement_used[i] = 0
+                        # print("using predicted")
+                else:  # ransac and pca are off from prediction but they are close to eachother
+                    # not sure - trust pca for now
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    adapt = False
+                    measurement_used[i] = 1
+                    # print("using pca")
+            else:
+                if ransac_pca_diff > ran_pca_thresh:  # ransac off from pred, pca close to pred, ransac far from pca
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    measurement_used[i] = 1
+                    adapt = False
+                    # print("using pca")
+                else:  # ransac off from pred,  pca close to pred, ransac and pred close
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    measurement_used[i] = 1
+                    adapt = False
+                    # print("using pca")
+        else:
+            if pca_pred_diff > pca_pred_thresh:
+                if ransac_pca_diff > ran_pca_thresh:  # ransac close to pred, pca far from pred, ransac far from pca
+                    z_q_k = z_q_k_2.copy()
+                    z_pi_k = z_pi_k_2.copy()
+                    z_p_k = z_p_k_2.copy()
+                    z_p1_k = associatedBbox_2[:, 0]
+                    associatedBbox = associatedBbox_2.copy()
+                    measurement_used[i] = 2
+                    adapt = False
+                    # print("using ransac")
+                else:  # ransac close to pred, pca far from pred, ransac close to pca
+                    z_q_k = z_q_k_2.copy()
+                    z_pi_k = z_pi_k_2.copy()
+                    z_p_k = z_p_k_2.copy()
+                    z_p1_k = associatedBbox_2[:, 0]
+                    associatedBbox = associatedBbox_2.copy()
+                    measurement_used[i] = 2
+                    adapt = False
+                    # print("using ransac")
+            else:
+                if ransac_pca_diff > ran_pca_thresh:  # ransac close to pred, pca close to pred, ransac far from pca
+                    # not sure - trust pca for now
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    measurement_used[i] = 1
+                    adapt = False
+                    # print("using pca")
+                else:  # ransac close to pred, pac close to pred, ransac close to pca
+                    # not sure - trust pca for now
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    measurement_used[i] = 1
+                    adapt = False
+                    # print("using pca")
+>>>>>>> Stashed changes
 
 
     if visualize:
@@ -503,6 +628,7 @@ for i in range(nframes):
         color='b', linewidth=4)
 
         # plot measured
+<<<<<<< Updated upstream
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_3[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_3[1, 0]],
                 [z_p_k[2], z_p_k[2] + Rot_measured_3[2, 0]],
                 color='red', linewidth=4)
@@ -512,6 +638,29 @@ for i in range(nframes):
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_3[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_3[1, 2]],
                 [z_p_k[2], z_p_k[2] + Rot_measured_3[2, 2]],
                 color='red', linewidth=4)
+=======
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                color='orange', linewidth=4)
+
+        # Rot_measured_2 = R_1_2
+        # plot measured
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+        #         color='red', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+        #         color='red', linewidth=4)
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+        #         color='red', linewidth=4)
+>>>>>>> Stashed changes
 
         # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
         #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
@@ -889,6 +1038,7 @@ plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
 #plt.title('Orientation $\displaystyle q_3$')
 
+<<<<<<< Updated upstream
 metrics = np.array(metrics)
 fig = plt.figure()
 plt.scatter(np.arange(0, dt*nframes, dt), metrics[:,0], label='Perfect Metric', linewidth=1)
@@ -897,6 +1047,20 @@ plt.scatter(np.arange(0, dt*nframes, dt), metrics[:,2], label='Rotation Angle Me
 plt.legend()
 plt.xlabel('Time (s)')
 plt.ylabel('Metric')
+=======
+fig = plt.figure()
+plt.scatter(np.arange(0, dt*nframes, dt), measurement_used, marker='.')
+plt.xlabel('Time (s)')
+plt.ylabel('Measurement Used (0 = pred, 1=zqk1, 2=zqk2)')
+
+# metrics = np.array(metrics)
+# fig = plt.figure()
+# plt.plot(np.arange(0, dt*nframes, dt), metrics[:,0], label='Perfect Metric', linewidth=1)
+# plt.plot(np.arange(0, dt*nframes, dt), metrics[:,1], label='Our Metric', linewidth=1)
+# plt.legend()
+# plt.xlabel('Time (s)')
+# plt.ylabel('Metric')
+>>>>>>> Stashed changes
 
 """
 fig = plt.figure()
