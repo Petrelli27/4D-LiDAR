@@ -252,13 +252,16 @@ qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.00025
+p = 0.05
 om = .05
 p1 = 1
 q = 0.04
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
+z_q_k_1_previous = np.zeros((4,))
+z_q_k_2_previous = np.zeros((4,))
+# q_km1 = np.zeros((4,))
 
 # Measurement matrix
 H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
@@ -285,8 +288,8 @@ metrics = []
 z_s_all = []
 for i in range(nframes):
     print(i)
-    # visualize_flag = i>940 and i%1==0
-    visualize_flag = False
+    visualize_flag = i>154 and i%1==0
+    # visualize_flag = False
     # Use first measurements for initializations of states
     if i > 0:
         # Decompose the state vector
@@ -392,96 +395,334 @@ for i in range(nframes):
     if i == 0:
         associatedBbox = associatedBbox_1.copy()
         z_p1_k = associatedBbox_1[:, 0]
+        z_q_k_1_previous = z_q_k_1.copy()
+        z_q_k_2_previous = z_q_k_2.copy()
 
     if i > 0:
+
+        ###########################################################################3
         ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
         pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
         ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
+        pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
+        ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
+        # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
         ran_pred_thresh = 15
         pca_pred_thresh = 15
         ran_pca_thresh = 15
+        pca_prev_thresh = 15
+        ran_prev_thresh = 15
+        # pred_prev_diff = 15
 
+        # super metric
         if ransac_pred_diff > ran_pred_thresh:
             if pca_pred_diff > pca_pred_thresh:
-                if ransac_pca_diff > ran_pca_thresh: # ransac, pca and prediction are all off from one another
-                    if ransac_pca_diff > ransac_pred_diff:
-                        z_q_k = z_q_k_2.copy()
-                        z_pi_k = z_pi_k_2.copy()
-                        z_p_k = z_p_k_2.copy()
-                        z_p1_k = associatedBbox_2[:, 0]
-                        associatedBbox = associatedBbox_2.copy()
-                        adapt = False
-                        print("using ransac")
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac, prediction, pca, and changes between previous measurements are off
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 1")
+                        # ransac, prediction, pca, previous ransac are off, but current and previous pca show reasonable change
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 2")
                     else:
-                        # trust prediction
-                        associatedBbox = predictedBbox.copy()
-                        z_p_k = z_p_k_1.copy()
-                        z_p1_k = associatedBbox[:, 0]
-                        adapt = True
-                        print("using predicted")
-                else:  # ransac and pca are off from prediction but they are close to eachother
-                    # not sure - trust pca for now
-                    z_q_k = z_q_k_1.copy()
-                    z_pi_k = z_pi_k_1.copy()
-                    z_p_k = z_p_k_1.copy()
-                    z_p1_k = associatedBbox_1[:, 0]
-                    associatedBbox = associatedBbox_1.copy()
-                    adapt = False
-                    print("using pca")
+                        # ransac, prediction, pca, previous pca are off, but current and previous ransac show reasonable change
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 8")
+                        # ransac, prediction and pca are off, but both measurements show consistent change
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac and pca are close but far from prediction, but both previous measurements are not consistent change
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 5")
+                        # ransac and pca are close but far from prediction, ransac previous inconsistent but pca previous consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 1")
+                    else:
+                        # ransac and pca are close but far from prediction, ransac previous consistent but pca previous inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 6")
+                        # ransac and pca are close but far from prediction, ransac previous consistent and pca previous consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 2")
             else:
-                if ransac_pca_diff > ran_pca_thresh:  # ransac off from pred, pca close to pred, ransac far from pca
-                    z_q_k = z_q_k_1.copy()
-                    z_pi_k = z_pi_k_1.copy()
-                    z_p_k = z_p_k_1.copy()
-                    z_p1_k = associatedBbox_1[:, 0]
-                    associatedBbox = associatedBbox_1.copy()
-                    adapt = False
-                    print("using pca")
-                else:  # ransac off from pred,  pca close to pred, ransac and pred close
-                    z_q_k = z_q_k_1.copy()
-                    z_pi_k = z_pi_k_1.copy()
-                    z_p_k = z_p_k_1.copy()
-                    z_p1_k = associatedBbox_1[:, 0]
-                    associatedBbox = associatedBbox_1.copy()
-                    adapt = False
-                    print("using pca")
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, and both ransac and pca are inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 7")
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far,  pca consistent, ransac inconsistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 3")
+                    else:
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, pca inconsistent, ransac consistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 1")
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, and both ransac and pca are consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and both ransac and pca are inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 8")
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac inconsistent, pca consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 5")
+                    else:
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac consistent, pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 2")
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, pca and ransac consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 6")
         else:
             if pca_pred_diff > pca_pred_thresh:
-                if ransac_pca_diff > ran_pca_thresh:  # ransac close to pred, pca far from pred, ransac far from pca
-                    z_q_k = z_q_k_2.copy()
-                    z_pi_k = z_pi_k_2.copy()
-                    z_p_k = z_p_k_2.copy()
-                    z_p1_k = associatedBbox_2[:, 0]
-                    associatedBbox = associatedBbox_2.copy()
-                    adapt = False
-                    print("using ransac")
-                else:  # ransac close to pred, pca far from pred, ransac close to pca
-                    z_q_k = z_q_k_2.copy()
-                    z_pi_k = z_pi_k_2.copy()
-                    z_p_k = z_p_k_2.copy()
-                    z_p1_k = associatedBbox_2[:, 0]
-                    associatedBbox = associatedBbox_2.copy()
-                    adapt = False
-                    print("using ransac")
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred far, ransac pca far, ransac and pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 9")
+                        # ransac pred close, pca pred far, ransac pca far, ransac inconsisent and pca consistent
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 10")
+                    else:
+                        # ransac pred close, pca pred far, ransac pca far, ransac consisent and pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 3")
+                        # ransac pred close, pca pred far, ransac pca far, ransac and pca consisent
+                        else:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred far, ransac pca close, ransac and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 11")
+                        # ransac pred close, pca pred far, ransac pca close, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 7")
+                    else:
+                        # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 5")
+                        # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 8")
             else:
-                if ransac_pca_diff > ran_pca_thresh:  # ransac close to pred, pca close to pred, ransac far from pca
-                    # not sure - trust pca for now
-                    z_q_k = z_q_k_1.copy()
-                    z_pi_k = z_pi_k_1.copy()
-                    z_p_k = z_p_k_1.copy()
-                    z_p1_k = associatedBbox_1[:, 0]
-                    associatedBbox = associatedBbox_1.copy()
-                    adapt = False
-                    print("using pca")
-                else:  # ransac close to pred, pac close to pred, ransac close to pca
-                    # not sure - trust pca for now
-                    z_q_k = z_q_k_1.copy()
-                    z_pi_k = z_pi_k_1.copy()
-                    z_p_k = z_p_k_1.copy()
-                    z_p1_k = associatedBbox_1[:, 0]
-                    associatedBbox = associatedBbox_1.copy()
-                    adapt = False
-                    print("using pca")
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred close, ransac pca far, ransac inconsistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 12")
+                        # ransac pred close, pca pred close, ransac pca far, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 9")
+                    else:
+                        # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 6")
+                        # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 10")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred close, ransac pca close, ransac inconsistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 13")
+                        # ransac pred close, pca pred close, ransac pca close, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 11")
+                    else:
+                        # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 7")
+                        # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 12")
+
+        ######################################
 
 
     # if np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :])) - np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :])) > 25 or perfect_metric == True or np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1)) > 30:
@@ -497,6 +738,8 @@ for i in range(nframes):
         print('PCA Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_kp1))))
         print('Ransac Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_kp1))))
         print('Ransac PCA diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))))
+        print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
+        print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
         print(perfect_metric)
         # _ = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, visualize_flag)
         fig = plt.figure()
@@ -541,7 +784,7 @@ for i in range(nframes):
         # Rot_measured_2 = R_1_2
         # normal_vecs = normal_vecs.T
 
-        # R_estimated = quat2rotm(q_kp1)
+        R_estimated = quat2rotm(q_kp1)
 
         R_true = quat2rotm(q_true[i,:])
 
@@ -589,15 +832,15 @@ for i in range(nframes):
         #
 
         # plot current estimate of ekf
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
-        #         color='orange', linewidth=4)
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
-        #         color='orange', linewidth=4)
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
-        #         color='orange', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+                color='red', linewidth=4)
 
         # plot true
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
@@ -751,6 +994,8 @@ for i in range(nframes):
     if i>0:
         P_k = P_kp1.copy()
         x_k = x_kp1.copy()
+        z_q_k_1_previous = z_q_k_1.copy()
+        z_q_k_2_previous = z_q_k_2.copy()
 
     # Append for analysis
     z_s.append(z_kp1)
