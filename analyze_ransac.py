@@ -288,8 +288,8 @@ metrics = []
 z_s_all = []
 for i in range(nframes):
     print(i)
-    visualize_flag = i>154 and i%1==0
-    # visualize_flag = False
+    # visualize_flag = i>160 and i%1==0
+    visualize_flag = False
     # Use first measurements for initializations of states
     if i > 0:
         # Decompose the state vector
@@ -407,11 +407,11 @@ for i in range(nframes):
         pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
         ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
         # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
-        ran_pred_thresh = 15
-        pca_pred_thresh = 15
-        ran_pca_thresh = 15
-        pca_prev_thresh = 15
-        ran_prev_thresh = 15
+        ran_pred_thresh = 20
+        pca_pred_thresh = 20
+        ran_pca_thresh = 25
+        pca_prev_thresh = 10
+        ran_prev_thresh = 10
         # pred_prev_diff = 15
 
         # super metric
@@ -778,7 +778,7 @@ for i in range(nframes):
         #            label='Vertex 1 Meas.')
         ax.legend()
         
-        Rot_measured = quat2rotm(z_q_k)
+        Rot_measured = quat2rotm(z_q_k_1)
 
         Rot_measured_2 = quat2rotm(z_q_k_2)
         # Rot_measured_2 = R_1_2
