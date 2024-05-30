@@ -13,12 +13,12 @@ from scipy.signal import find_peaks
 
 def sum_of_sinusoids(t_fit, *params_fit):
     y_fit = np.zeros_like(t_fit)
-    num_sinusoids = (len(params_fit) - 2) // 2
+    num_sinusoids = (len(params_fit) - 0) // 4
     for i in range(num_sinusoids):
-        A = params_fit[0]
-        omega = params_fit[2*i + 2]
-        phi = params_fit[1]
-        C = params_fit[2*i + 3]
+        A = params_fit[4 * i]
+        omega = params_fit[4 * i + 2]
+        phi = params_fit[4 * i + 1]
+        C = params_fit[4 * i + 3]
         y_fit += A * np.sin(omega * t_fit + phi) + C
     return y_fit
 
@@ -61,19 +61,15 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
     initial_amplitude = max(y) - min(y)
     initial_phase = 0
     initial_constant = max(y)
-    initial_frequencies = top_frequencies
+    initial_frequencies = 2 * np.pi * top_frequencies
 
     initial_guess = []
     if len(params_ini) == 0:
         for index in range(0, num_sinusoids):
-            if index == 0:
-                initial_guess.append(initial_amplitude)
-                initial_guess.append(initial_phase)
-                initial_guess.append(initial_frequencies[index])
-                initial_guess.append(initial_constant)
-            else:
-                initial_guess.append(initial_frequencies[index])
-                initial_guess.append(initial_constant)
+            initial_guess.append(initial_amplitude)
+            initial_guess.append(initial_phase)
+            initial_guess.append(initial_frequencies[index])
+            initial_guess.append(initial_constant)
     else:
         initial_guess = params_ini
 
@@ -281,7 +277,7 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [1., 1., 1.]
+omega_0 = [-1., 0., 1.]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
@@ -295,29 +291,40 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
                0.25])  # Initial Covariance matrix
 
 # Process noise covariance matrix
-qp = 0.000001
-qv = 0.000005
-qom = 0.0005
+qp = 0.0000001
+qv = 0.0000005
+qom = 0.005
 qp1 = 0.05
-qq = 0.00005
+qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
 p = 0.05
-om = .25
-p1 = 500
-q = 0.00004
-R = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+om = .05
+p1 = 1
+q = 0.04
+R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
+
+z_q_k_1_previous = np.zeros((4,))
+z_q_k_2_previous = np.zeros((4,))
+# q_km1 = np.zeros((4,))
 
 # Measurement matrix
-H = np.zeros([len(P_0) - 3, len(P_0)])  # no measuring of velocity
-H[0:3, 0:3] = np.eye(3)
-H[3:, 6:] = np.eye(10)
+H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
+H1[0:3,0:3] = np.eye(3)
+H1[3:,6:] = np.eye(10)
 bad_attitude_measurement_flag = False
+adapt = False
+
+H2 = np.zeros([9,16])
+H2[0:3,0:3] = np.eye(3)
+H2[3:6,6:9] = np.eye(3)
+H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
 n_moving_average = 40
-settling_time = 500
+settling_time = 40
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -343,6 +350,9 @@ params_y = []
 params_z = []
 centroids_inB = []
 true_pos_inB = []
+q_kp1s =[]
+metrics = []
+z_s_all = []
 
 # ukf weight values
 alpha = 1e-1
@@ -367,13 +377,14 @@ tolerance = 1e-1  # threshold to which the ISPKF iterates, i.e., iterate until d
 
 for i in range(nframes):
 
-    # Set initial states to measurements
-    if i == 0:
-        x_k = x_0.copy()  # state
-        P_k = P_0.copy()  # covariance matrix
+    print(i)
+    # visualize_flag = i>160 and i%1==0
+    visualize_flag = False
+
+
 
     # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
-    else:
+    if i > 0:
         # state vector as mean for sigmapoint transform
         mu_sp = x_k.copy()
 
@@ -383,7 +394,7 @@ for i in range(nframes):
         # cholesky decomposition for lower triangular matrix
         try:
             L = scipy.linalg.cholesky(sigma_zz, lower=True)
-        except numpy.linalg.LinAlgError:  # happens when the diagonal is zero but numerically speaking has negative elements
+        except np.linalg.LinAlgError:  # happens when the diagonal is zero but numerically speaking has negative elements
             np.fill_diagonal(sigma_zz, sigma_zz.diagonal() + epsilon)
             L = scipy.linalg.cholesky(sigma_zz, lower=True)
 
@@ -477,15 +488,15 @@ for i in range(nframes):
     Z_i = ZLs[i]
 
     # Return bounding box and centroid estimate of bounding box
-    z_pi_k, z_p_k, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True)
+    z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, False)
 
     ############
     # bias removal
     ############
 
-    original_pos_meas.append(z_p_k)
-    centroids_inB.append(Rot_L_to_B[i] @ z_p_k)
+    original_pos_meas.append(z_p_k_1)
+    centroids_inB.append(Rot_L_to_B[i] @ z_p_k_1)
     true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
 
     curr_t = i * dt
@@ -507,7 +518,7 @@ for i in range(nframes):
             true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
 
             thresh = 0.05  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-            num_sin = 7  # number of sinusoids to use to fit the data
+            num_sin = 2  # number of sinusoids to use to fit the data
             skip = 1  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
             params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
             # params_x, constant_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
@@ -525,80 +536,444 @@ for i in range(nframes):
     # Orientation association
     # R_1 is obtained from bounding box
     if i == 0:
-        # z_q_k = rotm2quat(R_1)
-        z_q_k = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-                                                                        1.]]))  # this rotation is to set initial orientation to match with true
+        z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+                                                                          1.]]))  # this rotation is to set initial orientation to match with true
         z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
                                                                             1.]]))  # this rotation is to set initial orientation to match with true
-
+        z_q_k = z_q_k_1.copy()
+        z_pi_k = z_pi_k_1.copy()
+        z_p_k = z_p_k_1.copy()
+        perfect_metric = False
+        perfect_metric_2 = False
     else:
-        z_q_k, bad_attitude_measurement_flag, error = rotation_association(q_kp1, R_1)
+        z_q_k_1, _, error = rotation_association(q_kp1, R_1)
         z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
-        # z_q_k_2 = rotm2quat(R_1_2)
-        z_q_k = q_true[i]
-        errors.append(np.rad2deg(error))
+        if quat_angle_diff(z_q_k_1, q_true[i, :]) > np.deg2rad(35):
+            perfect_metric = True
+        else:
+            perfect_metric = False
+
+        if quat_angle_diff(z_q_k_2, q_true[i, :]) > np.deg2rad(35):
+            perfect_metric_2 = True
+        else:
+            perfect_metric_2 = False
+
+    if i > 0:
         LWD = 2 * quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
         L = LWD[0];
         W = LWD[1];
         D = LWD[2]
         predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)  # just use the predicted box instead
 
-    # first use q from R_1 to get L,W,D
-    # then use z_q_k (not perfectly aligned) to get
-    associatedBbox, Lm, Wm, Dm = boundingbox.associated(z_q_k, z_pi_k, z_p_k,
-                                                        R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-    z_p1_k = associatedBbox[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-    associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)  # L: along x-axis, W: along y-axis D: along z-axis
+        # first use q from R_1 to get L,W,D
+        # then use z_q_k (not perfectly aligned) to get
+    associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1,
+                                                          R_1)  # L: along x-axis, W: along y-axis D: along z-axis
+    z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+    associatedBbox_2, Lm_2, Wm_2, D_m2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
     z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
-    # for frame to frame visualzation
-    # if i>0 and i%1==0:
-    if False:
+    if i == 0:
+        associatedBbox = associatedBbox_1.copy()
+        z_p1_k = associatedBbox_1[:, 0]
+        z_q_k_1_previous = z_q_k_1.copy()
+        z_q_k_2_previous = z_q_k_2.copy()
+
+    if i > 0:
+
+        ###########################################################################3
+        ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
+        pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
+        ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
+        pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
+        ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
+        # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
+        ran_pred_thresh = 20
+        pca_pred_thresh = 20
+        ran_pca_thresh = 25
+        pca_prev_thresh = 10
+        ran_prev_thresh = 10
+        # pred_prev_diff = 15
+
+        # super metric
+        if ransac_pred_diff > ran_pred_thresh:
+            if pca_pred_diff > pca_pred_thresh:
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac, prediction, pca, and changes between previous measurements are off
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 1")
+                        # ransac, prediction, pca, previous ransac are off, but current and previous pca show reasonable change
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 2")
+                    else:
+                        # ransac, prediction, pca, previous pca are off, but current and previous ransac show reasonable change
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 8")
+                        # ransac, prediction and pca are off, but both measurements show consistent change
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac and pca are close but far from prediction, but both previous measurements are not consistent change
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 5")
+                        # ransac and pca are close but far from prediction, ransac previous inconsistent but pca previous consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 1")
+                    else:
+                        # ransac and pca are close but far from prediction, ransac previous consistent but pca previous inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 6")
+                        # ransac and pca are close but far from prediction, ransac previous consistent and pca previous consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 2")
+            else:
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, and both ransac and pca are inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 7")
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far,  pca consistent, ransac inconsistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 3")
+                    else:
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, pca inconsistent, ransac consistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 1")
+                        # pca and prediction are close, pca and ransac are far, ransac and pred are far, and both ransac and pca are consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and both ransac and pca are inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 8")
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac inconsistent, pca consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 5")
+                    else:
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac consistent, pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 2")
+                        # pca and prediction are close, pca and ransac are close, ransac and pred are far, pca and ransac consistent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 6")
+        else:
+            if pca_pred_diff > pca_pred_thresh:
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred far, ransac pca far, ransac and pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 9")
+                        # ransac pred close, pca pred far, ransac pca far, ransac inconsisent and pca consistent
+                        else:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 10")
+                    else:
+                        # ransac pred close, pca pred far, ransac pca far, ransac consisent and pca inconsistent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 3")
+                        # ransac pred close, pca pred far, ransac pca far, ransac and pca consisent
+                        else:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 4")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred far, ransac pca close, ransac and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 11")
+                        # ransac pred close, pca pred far, ransac pca close, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 7")
+                    else:
+                        # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 5")
+                        # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 8")
+            else:
+                if ransac_pca_diff > ran_pca_thresh:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred close, ransac pca far, ransac inconsistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 12")
+                        # ransac pred close, pca pred close, ransac pca far, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 9")
+                    else:
+                        # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 6")
+                        # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 10")
+                else:
+                    if ransac_prev_diff > ran_prev_thresh:
+                        # ransac pred close, pca pred close, ransac pca close, ransac inconsistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            # trust prediction
+                            associatedBbox = predictedBbox.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox[:, 0]
+                            adapt = True
+                            print("using predicted 13")
+                        # ransac pred close, pca pred close, ransac pca close, ransac inconsistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 11")
+                    else:
+                        # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca inconsisent
+                        if pca_prev_diff > pca_prev_thresh:
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
+                            adapt = False
+                            print("using ransac 7")
+                        # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca consisent
+                        else:
+                            z_q_k = z_q_k_1.copy()
+                            z_pi_k = z_pi_k_1.copy()
+                            z_p_k = z_p_k_1.copy()
+                            z_p1_k = associatedBbox_1[:, 0]
+                            associatedBbox = associatedBbox_1.copy()
+                            adapt = False
+                            print("using pca 12")
+
+        ######################################
+
+    # if np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :])) - np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :])) > 25 or perfect_metric == True or np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1)) > 30:
+    #     visualize_flag = True
+    # if perfect_metric == True:# or perfect_metric_2 == True:
+    #     visualize_flag = True
+    # visualize_flag = False
+    if visualize_flag:
+        # if False:
+        print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
+        print('Ransac True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))))
+        print('Pred True diff.:' + str(np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))))
+        print('PCA Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_kp1))))
+        print('Ransac Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_kp1))))
+        print('Ransac PCA diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))))
+        print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
+        print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
+        print(perfect_metric)
+        # _ = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, visualize_flag)
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         # ax.legend()
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_zlabel('z')
-
+        ax.title.set_text(
+            f'Time={i * dt}s' + '\n' + f'Pred. Length={round(L, 2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
         # width = orange to green, blue to green
         # length = orange to cyan, blue to cyan
         # height = orange to magenta, blue to magenta
-        ax.title.set_text(
-            f'Time={i * dt}s' + '\n' + f'Pred. Length={round(L, 2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
-
-        # plot lidar point cloud
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+        # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
         ax.set_aspect('equal', 'box')
 
-        # plot associated box from PCA
-        drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
-                      associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'b', 2)
+        # print(x_kp1)
+        # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
+        drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2],
+                      associatedBbox_1[:, 3],
+                      associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7],
+                      'b', 2)
 
-        # plot associated box from RANSAC
         drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
                       associatedBbox_2[:, 3],
                       associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
                       'orange', 2)
 
-        # plot predicted box from ekf
+        # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+        #           associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
+
+        # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+        #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+        # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
         # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
         #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
 
-        # plot the vertex #1 after association from predicted and measured boxes in red and blue, respectively
-        # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='red', label='Vertex 1 Pred.')
+        # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
         # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
         #            label='Vertex 1 Meas.')
         ax.legend()
 
-        # for visualizing orientations
-        Rot_measured = quat2rotm(z_q_k)  # measurement being used for EKF
-        Rot_measured_2 = quat2rotm(z_q_k_2)  # alternate measurement, associated
-        Rot_measured_2 = R_1_2  # alternate measurement, not associated
-        R_estimated = quat2rotm(q_kp1)  # predicted from the ekf
-        R_true = quat2rotm(q_true[i, :])  # true orientation
+        Rot_measured = quat2rotm(z_q_k_1)
 
-        # plot measured being used by EKF in blue
+        Rot_measured_2 = quat2rotm(z_q_k_2)
+        # Rot_measured_2 = R_1_2
+        # normal_vecs = normal_vecs.T
+
+        R_estimated = quat2rotm(q_kp1)
+
+        R_true = quat2rotm(q_true[i, :])
+
+        # plot measured
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
                 [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
                 color='blue', linewidth=4)
@@ -609,7 +984,7 @@ for i in range(nframes):
                 [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
                 color='b', linewidth=4)
 
-        # plot measured altnernate in orange
+        # plot measured
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
                 [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
                 color='orange', linewidth=4)
@@ -620,18 +995,41 @@ for i in range(nframes):
                 [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
                 color='orange', linewidth=4)
 
-        # plot current estimate of ekf in red
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+        Rot_measured_2 = R_1_2
+        # plot measured
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
         #         color='red', linewidth=4)
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
         #         color='red', linewidth=4)
-        # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
-        #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+        # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+        #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
         #         color='red', linewidth=4)
 
-        # plot true in green
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
+        #         color='blue', linewidth=4)
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 1]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 1]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 1]],
+        #         color='blue', linewidth=4)
+        # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 2]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 2]],
+        #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 2]],
+        #         color='blue', linewidth=4)
+        #
+
+        # plot current estimate of ekf
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+                color='red', linewidth=4)
+        ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+                [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+                color='red', linewidth=4)
+
+        # plot true
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
                 [z_p_k[2], z_p_k[2] + R_true[2, 0]],
                 color='green', linewidth=4)
@@ -642,17 +1040,34 @@ for i in range(nframes):
                 [z_p_k[2], z_p_k[2] + R_true[2, 2]],
                 color='green', linewidth=4)
 
+        # plot b_frame
+        # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+        #         [0., 0. + Rot_B_to_L[i][2, 0]],
+        #         color='r', linewidth=1)
+        # ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+        #         [0., 0. + Rot_B_to_L[i][2, 1]],
+        #         color='g', linewidth=1)
+        # ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+        #         [0., 0. + Rot_B_to_L[i][2, 2]],
+        #         color='b', linewidth=1)
+
         # black is axis of rotation
         # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
         #         [z_p_k[2], z_p_k[2] + 1],
         #         color='black', linewidth=4)
 
-        # plot centroids
+        # outlier_cloud = pcd.select_by_index(inliers, invert=True)
+
+        # Visualize the inliers (plane) and outliers
+        # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
+        # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
+        # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
+
+        plt.show()
+
         # ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
         # ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
         # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')
-
-        plt.show()
 
     # find angular velocity from LOS velocities
     if i > 0:
@@ -724,6 +1139,23 @@ for i in range(nframes):
     ##############
     # Update - Combine Measurement and Estimates
     ##############
+
+    # Compute Measurement Vector
+    # if False:
+    if adapt:
+        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
+        H = H2
+        R = R2
+    else:
+        z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+        H = H1
+        R = R1
+
+    # Set initial states to measurements
+    if i == 0:
+        x_k = np.hstack([np.array([-170., -350., -20.]), vT_0, z_omega_k, z_p1_k, q_ini])  # state
+        P_k = P_0.copy()  # covariance matrix
+
     num_meas = len(z_kp1)
 
     if i > 0:
@@ -750,7 +1182,7 @@ for i in range(nframes):
             # cholesky, ensure positive definiteness
             try:
                 L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
-            except numpy.linalg.LinAlgError:
+            except np.linalg.LinAlgError:
                 np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
                 L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
 
@@ -818,6 +1250,9 @@ for i in range(nframes):
 
         # smooth out covariance off diagonals
         P_k = 0.5 * P_k + 0.5 * P_k.T
+
+        z_q_k_1_previous = z_q_k_1.copy()
+        z_q_k_2_previous = z_q_k_2.copy()
 
     z_s.append(z_kp1)
 
@@ -1071,10 +1506,7 @@ plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_3$')
 # plt.title('Orientation $\displaystyle q_3$')
 
-fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), errors, label='Angular Error', linewidth=1)
-plt.xlabel('Time (s)')
-plt.ylabel('Angle (degrees)')
+
 """
 fig = plt.figure()
 true_b = []

@@ -48,6 +48,25 @@ def normalize_quat(q):
     q_unit = q/q_norm
     return q_unit #if q_unit[0] >= 0 else -q_unit
 
+def similar_quat(q1, q_ref):
+    q2 = -q1
+    if np.linalg.norm(q1 - q_ref) < np.linalg.norm(q2 - q_ref):
+        return q1
+    else:
+        return q2
+
+def quat_angle_diff(q1, q2):
+    R1 = quat2rotm(q1)
+    R2 = quat2rotm(q2)
+    R_diff = R1.T @ R2
+    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    return abs(angle_diff)
+
+def rotm_angle_diff(R1, R2):
+    R_diff = R1.T @ R2
+    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    return abs(angle_diff)
+
 def sigmoid(x, a=0.9, k=7):
     s= 1/(1+np.exp(k*(x-a)))
     y = -2/math.pi *x + 1
@@ -76,3 +95,24 @@ def R_to_axis_angle(R):
                                        R[0,2]-R[2,0],
                                        R[1,0]-R[0,1]])
     return (axis, angle)
+
+def custom_arccos(x):
+    """
+    Compute the arccosine of x and ensure the angle is between 0 and 90 degrees.
+
+    Parameters:
+    x (float or array-like): The input value(s) for which to compute the arccosine.
+
+    Returns:
+    float or ndarray: The arccosine of x, constrained to be between 0 and 90 degrees.
+    """
+    # Compute the arccosine in radians
+    angle_rad = np.arccos(x)
+
+    # Convert the angle to degrees
+    angle_deg = np.degrees(angle_rad)
+
+    # Adjust the angle to be within 0 to 90 degrees
+    angle_deg = np.where(angle_deg > 90, 180 - angle_deg, angle_deg)
+
+    return angle_deg

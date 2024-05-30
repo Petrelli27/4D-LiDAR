@@ -142,7 +142,7 @@ def rotation_association(q_kp1, R_1):
     # q_avg = eigenvectors[max_eigval_index]
     # if q_avg[0] < 0:
     #     q_avg = -q_avg
-    return normalize_quat(Q_list[0]), bad_attitude_measurement_flag, min_error
+    return similar_quat(normalize_quat(Q_list[0]), q_kp1), bad_attitude_measurement_flag, min_error
 
 
     # q_candidate1 = normalize_quat(slerp(Q_list[0], Q_list[1], weights_normed[1]))
