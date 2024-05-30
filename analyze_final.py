@@ -115,7 +115,7 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         plt.figure()
         t = np.arange(0., 1000., .05)
         plt.plot(t, sum_of_sinusoids(t, *params))
-        plt.show()
+        # plt.show()
 
     return params, constant
 
@@ -227,16 +227,25 @@ def orientationupdate(dt, x_k):
 
 
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
+
     Rot_0 = quat2rotm(q_ini)
     Rot_0 = np.eye(3)
     # print(Rot_0)
     q_s = []
     for i in range(len(debris_pos)):
+
         # get rotation matrix for that timestep
         Rot_i = rodrigues(omega_true, dt * i)
         q_i = rotm2quat(Rot_i @ Rot_0)
-        q_s.append(q_i)
-
+        if i == 0:
+            q_s.append(q_i)
+        else:
+            q_i_alt = -q_i
+            q_prev = q_s[i-1]
+            if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
+                q_s.append(q_i)
+            else:
+                q_s.append(q_i_alt)
     return q_s
 
 
@@ -281,6 +290,8 @@ omega_0 = [-1., 0., 1.]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+q_true_alt = -q_true
+
 p_0 = np.array([-170., -350., -20.])
 p1_0 = p_0 + np.array([-2 / 2, -2 / 2, -2 / 2])
 x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
@@ -302,7 +313,7 @@ Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, q
 p = 0.05
 om = .05
 p1 = 1
-q = 0.04
+q = 0.0004
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -324,7 +335,7 @@ H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
 n_moving_average = 40
-settling_time = 40
+settling_time = 10
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -366,7 +377,7 @@ w_0_m = lambd / (lambd + dimL)  # first weight for computing the mean
 w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
 w_0_c = w_0_m + (1 - alpha ** 2 + beta)  # first weight for computing covariance
 w_j_c = w_j_m
-tolerance = 1e-1  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
+tolerance = 1e-2  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
 
 # barfoot
 # lambd = 2  # formerly kappa
@@ -378,9 +389,11 @@ tolerance = 1e-1  # threshold to which the ISPKF iterates, i.e., iterate until d
 for i in range(nframes):
 
     print(i)
-    # visualize_flag = i>160 and i%1==0
+    # visualize_flag = i>0 and i%1==0
     visualize_flag = False
 
+    # if i > 200:
+    #     tolerance = 1e-1
 
 
     # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
@@ -528,9 +541,6 @@ for i in range(nframes):
             constants = [0, 0, constant_z]
             done = 1
 
-        z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
-        z_p_k = z_p_k_z
-
     #####################
 
     # Orientation association
@@ -580,7 +590,6 @@ for i in range(nframes):
         z_q_k_2_previous = z_q_k_2.copy()
 
     if i > 0:
-
         ###########################################################################3
         ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
         pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
@@ -596,6 +605,7 @@ for i in range(nframes):
         # pred_prev_diff = 15
 
         # super metric
+    if i > settling_time + 40:
         if ransac_pred_diff > ran_pred_thresh:
             if pca_pred_diff > pca_pred_thresh:
                 if ransac_pca_diff > ran_pca_thresh:
@@ -903,7 +913,37 @@ for i in range(nframes):
                             adapt = False
                             print("using pca 12")
 
+    elif i == 0:
+        z_q_k = z_q_k_1.copy()
+        z_pi_k = z_pi_k_1.copy()
+        z_p_k = z_p_k_1.copy()
+        z_p1_k = associatedBbox_1[:, 0]
+        associatedBbox = associatedBbox_1.copy()
+        adapt = False
+        print("using pca 14")
+    else:
+        if ransac_pred_diff > pca_pred_diff:
+            z_q_k = z_q_k_1.copy()
+            z_pi_k = z_pi_k_1.copy()
+            z_p_k = z_p_k_1.copy()
+            z_p1_k = associatedBbox_1[:, 0]
+            associatedBbox = associatedBbox_1.copy()
+            adapt = False
+            print("using pca 13")
+        else:
+            z_q_k = z_q_k_2.copy()
+            z_pi_k = z_pi_k_2.copy()
+            z_p_k = z_p_k_2.copy()
+            z_p1_k = associatedBbox_2[:, 0]
+            associatedBbox = associatedBbox_2.copy()
+            adapt = False
+            print("using ransac 9")
+
         ######################################
+
+    if curr_t >= (t_start + t_interval):
+        z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
+        z_p_k = z_p_k_z
 
     # if np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :])) - np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :])) > 25 or perfect_metric == True or np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1)) > 30:
     #     visualize_flag = True
