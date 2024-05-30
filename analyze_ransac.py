@@ -233,7 +233,7 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [1., 1., 1.]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [1., 1., 1.]
+omega_0 = [-1., 0., 1.]
 omega_true = [1., 1., 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
@@ -252,10 +252,10 @@ qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.05
-om = .05
+p = 0.07
+om = .2
 p1 = 1
-q = 0.04
+q = 0.05
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -277,7 +277,7 @@ H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
 n_moving_average = 40
-settling_time = 500
+settling_time = 100
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -288,7 +288,7 @@ metrics = []
 z_s_all = []
 for i in range(nframes):
     print(i)
-    # visualize_flag = i>160 and i%1==0
+    # visualize_flag = i>375 and i<388 and i%1==0
     visualize_flag = False
     # Use first measurements for initializations of states
     if i > 0:
