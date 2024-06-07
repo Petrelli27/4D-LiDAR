@@ -37,13 +37,13 @@ O_L = np.array([0,0,0])
 # Dynamics initializations
 # r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
 # rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
-r0 = [-0.17, -0.35, -0.02]  # initial starting position of chaser (km) - New initial conditions!!
-rdot0 = [0.000, 0.00045, 0.0001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+r0 = [-0.17, -0.35, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
+rdot0 = [0.000, 0.00045, -0.0002]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
 R = 670 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([0, 0, 1]) # inertial, unchanging angular velocity of debris
+omega_L = np.array([-0.5, 0.3, 1]) # inertial, unchanging angular velocity of debris
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
@@ -172,6 +172,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim_kompsat_z_rotation_only.pickle', 'wb') as sim_data:
+with open('sim_kompsat_journal.pickle', 'wb') as sim_data:
     pickle.dump(data, sim_data)
 

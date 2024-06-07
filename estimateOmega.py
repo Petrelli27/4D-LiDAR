@@ -37,7 +37,7 @@ def estimate_kabsch(prev_box_B, cur_box_B, dt):
     Rot_los = Vh.T @ np.array([[1,0],[0,d]]) @ U.T
     # Rot_los = Rot_los.T # why did we want a transpose here? should remove this line
     angle_rot_los = np.arctan2(Rot_los[1,0],Rot_los[0,0])
-    omega_los_B =  np.array([0,0,angle_rot_los / dt])
+    omega_los_B = np.array([0,0,angle_rot_los / dt])
 
     return omega_los_B
 

@@ -11,6 +11,15 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 
+def get_dimensions(p1, p, q):
+    p1_to_p = p - p1
+    R = quat2rotm(q)
+    p1_debris_frame = R.T @ p1_to_p
+    L = 2*p1_debris_frame[0]
+    W = 2*p1_debris_frame[1]
+    D = 2*p1_debris_frame[2]
+    return L, W, D
+
 def sum_of_sinusoids(t_fit, *params_fit):
     y_fit = np.zeros_like(t_fit)
     num_sinusoids = (len(params_fit) - 0) // 4
@@ -60,7 +69,7 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
 
     initial_amplitude = max(y) - min(y)
     initial_phase = 0
-    initial_constant = max(y)
+    initial_constant = np.mean(y)
     initial_frequencies = 2 * np.pi * top_frequencies
 
     initial_guess = []
@@ -86,24 +95,30 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         plt.plot(top_frequencies, top_magnitudes, 'ro', label='Top peaks')
         plt.xlabel('Frequency (Hz)')
         plt.ylabel('Magnitude')
-        plt.title('Frequency Spectrum')
         plt.legend()
 
         # with respect to true
         plt.figure()
         plt.scatter(t, y_orig - true, s=3, label='Data')
-        plt.plot(t, sum_of_sinusoids(t, *params))
-        plt.plot(t, sum_of_sinusoids(t, *params) + estimated - true, label='Fitted sum of sinusoids', color='red')
-        plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - true + constant, s=3, label='Bias corrected', color='orange')
-        plt.plot(t, estimated - true, label='Estimated', linestyle='--', color='green')
+        # plt.plot(t, sum_of_sinusoids(t, *params))
+        plt.plot(t, sum_of_sinusoids(t, *params) + estimated - true, label='Fitted Sum of Sinusoids', color='red')
+        # plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - true + constant, s=3, label='Bias corrected', color='orange')
+        plt.plot(t, estimated - true, label='Estimated', linestyle='-', color='Orange')
+        plt.plot(t, np.zeros_like(true), label='True', linestyle='--', color='Green')
+        plt.xlabel('Times (s)')
+        plt.ylabel('Position with Respect to Ground Truth (m)')
         plt.legend()
 
         # with respect to estimated
         plt.figure()
         plt.scatter(t, y_orig - estimated, s=3, label='Data')
-        plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted sum of sinusoids', color='red')
-        plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated + constant, s=3, label='Bias corrected', color='orange')
+        plt.plot(t, sum_of_sinusoids(t, *params), label='Fitted Sum of Sinusoids', color='red')
+        # plt.scatter(t, y_orig - sum_of_sinusoids(t, *params) - estimated + constant, s=3, label='Bias corrected', color='orange')
         plt.plot(t, true - estimated, label='True', linestyle='--', color='green')
+        plt.plot(t, np.zeros_like(estimated), label='Estimated', linestyle='-', color='orange')
+        plt.xlabel('Times (s)')
+        plt.ylabel('Position with Respect to Estimated (m)')
+
         plt.legend()
         #
         # print(np.mean(y_orig - true))
@@ -112,9 +127,9 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
 
 
         #
-        plt.figure()
-        t = np.arange(0., 1000., .05)
-        plt.plot(t, sum_of_sinusoids(t, *params))
+        # plt.figure()
+        # t = np.arange(0., 1000., .05)
+        # plt.plot(t, sum_of_sinusoids(t, *params))
         # plt.show()
 
     return params, constant
@@ -134,7 +149,7 @@ def correct_bias(z_p_k_meas, curr_i, dt_here, parameters, constants, R_i_L_to_B,
     return z_p_k_L
 
 
-def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
+def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth, label):
     # z1 plane boundary
     ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], color=color, linewidth=linewidth)  # W
     ax.plot([p2[0], p3[0]], [p2[1], p3[1]], [p2[2], p3[2]], color=color, linewidth=linewidth)
@@ -151,7 +166,7 @@ def drawrectangle(ax, p1, p2, p3, p4, p5, p6, p7, p8, color, linewidth):
     ax.plot([p1[0], p5[0]], [p1[1], p5[1]], [p1[2], p5[2]], color=color, linewidth=linewidth)  # W
     ax.plot([p2[0], p6[0]], [p2[1], p6[1]], [p2[2], p6[2]], color=color, linewidth=linewidth)
     ax.plot([p3[0], p7[0]], [p3[1], p7[1]], [p3[2], p7[2]], color=color, linewidth=linewidth)
-    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color, linewidth=linewidth)
+    ax.plot([p4[0], p8[0]], [p4[1], p8[1]], [p4[2], p8[2]], color=color, linewidth=linewidth, label=label)
 
     ax.scatter(p1[0], p1[1], p1[2], color='b')
     ax.scatter(p2[0], p2[1], p2[2], color='g')
@@ -253,7 +268,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0, 0, 0])
 O_L = np.array([0, 0, 0])
 
-with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
+with open('sim_kompsat_journal.pickle', 'rb') as sim_data:
     # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
     # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
@@ -286,13 +301,13 @@ nframes = len(VBs)
 
 # Initializations in L Frame
 vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
-omega_0 = [-1., 0., 1.]
-omega_true = [1., 1., 1.]
+omega_0 = [-1, 0, 1.]
+omega_true = [-0.5, 0.3, 1.]
 q_ini = [1., 0., 0., 0.]
 q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
 q_true_alt = -q_true
 
-p_0 = np.array([-170., -350., -20.])
+p_0 = np.array([-180., -320., -10.])
 p1_0 = p_0 + np.array([-2 / 2, -2 / 2, -2 / 2])
 x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
 num_states = len(x_0)
@@ -302,18 +317,18 @@ P_0 = np.diag([0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0
                0.25])  # Initial Covariance matrix
 
 # Process noise covariance matrix
-qp = 0.0000001
-qv = 0.0000005
-qom = 0.005
+qp = 0.00000001
+qv = 0.00000005
+qom = 0.00000005
 qp1 = 0.05
 qq = 0.000005
 Q = np.diag([qp, qp, qp, qv, qv, qv, qom, qom, qom, qp1, qp1, qp1, qq, qq, qq, qq])
 
 # Measurement noise covariance matrix
-p = 0.05
-om = .05
+p = 0.005
+om = 0.5
 p1 = 1
-q = 0.0004
+q = 0.004
 R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
 R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
 
@@ -334,8 +349,8 @@ H2[3:6,6:9] = np.eye(3)
 H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
-n_moving_average = 40
-settling_time = 10
+n_moving_average = 200
+settling_time = 200
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
 omegas_lls_b = np.zeros((nframes, 3))
@@ -348,10 +363,13 @@ zv_mags = []
 z_omegas = []
 z_v_s = []
 z_s = []
+z_rans = []
+z_pcas = []
 x_s = [x_0]
 P_s = []
 original_pos_meas = []
 estimated_pos = [p_0]
+rotation_errors = [0]
 
 # bias config
 interval_time = 0  # for bias part
@@ -364,6 +382,7 @@ true_pos_inB = []
 q_kp1s =[]
 metrics = []
 z_s_all = []
+without_correction = []
 
 # ukf weight values
 alpha = 1e-1
@@ -386,10 +405,51 @@ tolerance = 1e-2  # threshold to which the ISPKF iterates, i.e., iterate until d
 # w_0_c = w_0_m  # first weight for computing covariance
 # w_j_c = w_j_m
 
+# counters for adaptation 12, 12, 8
+pred1 = 0
+pred2 = 0
+pred3 = 0  # not used currently
+pred4 = 0
+pred5 = 0
+pred6 = 0
+pred7 = 0
+pred8 = 0
+pred9 = 0
+pred10 = 0
+pred11 = 0
+pred12 = 0
+pred13 = 0
+ran1 = 0
+ran2 = 0
+ran3 = 0
+ran4 = 0
+ran5 = 0
+ran6 = 0
+ran7 = 0
+ran8 = 0
+pca1= 0
+pca2 = 0
+pca3 = 0
+pca4 = 0
+pca5 = 0
+pca6 = 0
+pca7 = 0
+pca8 = 0
+pca9 = 0
+pca10 = 0
+pca11 = 0
+pca12 = 0
+ransac = 0
+prediction = 0
+pca = 0
+true_pred = 0
+true_ran = 0
+true_pca = 0
+
 for i in range(nframes):
 
     print(i)
-    # visualize_flag = i>0 and i%1==0
+    # visualize_flag = i>40*20 and i%20==0
     visualize_flag = False
 
     # if i > 200:
@@ -537,6 +597,8 @@ for i in range(nframes):
             # params_x, constant_x = remove_bias(interval_time, dt, z[:, 0], estimated[:, 0], num_sin, thresh, skip, true[:, 0], params_x)
             # params_y, constant_y = remove_bias(interval_time, dt, z[:, 1], estimated[:, 1], num_sin, thresh, skip, true[:, 1], params_y)
             parameters = [params_x, params_y, params_z]
+            print(params_z)
+            print(constant_z)
 
             constants = [0, 0, constant_z]
             done = 1
@@ -596,6 +658,9 @@ for i in range(nframes):
         ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
         pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
         ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
+        pca_true_diff = np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))
+        ransac_true_diff = np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))
+        pred_true_diff = np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))
         # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
         ran_pred_thresh = 20
         pca_pred_thresh = 20
@@ -603,6 +668,19 @@ for i in range(nframes):
         pca_prev_thresh = 10
         ran_prev_thresh = 10
         # pred_prev_diff = 15
+
+        if pca_true_diff < 20 or ransac_true_diff < 20:
+            if pca_true_diff > ransac_true_diff:
+                true_ran += 1
+            else:
+                true_pca += 1
+        elif pca_true_diff < ransac_true_diff and pca_true_diff < pred_true_diff:
+            true_pca += 1
+        elif ransac_true_diff < pca_true_diff and ransac_true_diff < pred_true_diff:
+            true_ran += 1
+        else:
+            true_pred += 1
+
 
         # super metric
     if i > settling_time + 40:
@@ -617,6 +695,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred1 += 1
+                            prediction += 1
                             print("using predicted 1")
                         # ransac, prediction, pca, previous ransac are off, but current and previous pca show reasonable change
                         else:
@@ -625,6 +705,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred2 += 2
+                            prediction += 1
                             print("using predicted 2")
                     else:
                         # ransac, prediction, pca, previous pca are off, but current and previous ransac show reasonable change
@@ -635,6 +717,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran8 += 1
+                            ransac += 1
                             print("using ransac 8")
                         # ransac, prediction and pca are off, but both measurements show consistent change
                         else:
@@ -643,6 +727,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred4 += 1
+                            prediction += 1
                             print("using predicted 4")
                 else:
                     if ransac_prev_diff > ran_prev_thresh:
@@ -653,6 +739,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred5 += 1
+                            prediction += 1
                             print("using predicted 5")
                         # ransac and pca are close but far from prediction, ransac previous inconsistent but pca previous consistent
                         else:
@@ -662,6 +750,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca1 += 1
+                            pca += 1
                             print("using pca 1")
                     else:
                         # ransac and pca are close but far from prediction, ransac previous consistent but pca previous inconsistent
@@ -671,6 +761,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred6 += 1
+                            prediction += 1
                             print("using predicted 6")
                         # ransac and pca are close but far from prediction, ransac previous consistent and pca previous consistent
                         else:
@@ -680,6 +772,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca2 +=1
+                            pca += 1
                             print("using pca 2")
             else:
                 if ransac_pca_diff > ran_pca_thresh:
@@ -691,6 +785,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred7 += 1
+                            prediction += 1
                             print("using predicted 7")
                         # pca and prediction are close, pca and ransac are far, ransac and pred are far,  pca consistent, ransac inconsistent
                         else:
@@ -700,6 +796,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca3 += 1
+                            pca += 1
                             print("using pca 3")
                     else:
                         # pca and prediction are close, pca and ransac are far, ransac and pred are far, pca inconsistent, ransac consistent
@@ -710,6 +808,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran1 += 1
+                            ransac += 1
                             print("using ransac 1")
                         # pca and prediction are close, pca and ransac are far, ransac and pred are far, and both ransac and pca are consistent
                         else:
@@ -719,6 +819,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca4 += 1
+                            pca += 1
                             print("using pca 4")
                 else:
                     if ransac_prev_diff > ran_prev_thresh:
@@ -729,6 +831,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred8 += 1
+                            prediction += 1
                             print("using predicted 8")
                         # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac inconsistent, pca consistent
                         else:
@@ -738,6 +842,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca5 += 1
+                            pca += 1
                             print("using pca 5")
                     else:
                         # pca and prediction are close, pca and ransac are close, ransac and pred are far, and ransac consistent, pca inconsistent
@@ -748,6 +854,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran2 += 1
+                            ransac += 1
                             print("using ransac 2")
                         # pca and prediction are close, pca and ransac are close, ransac and pred are far, pca and ransac consistent
                         else:
@@ -757,6 +865,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca6 += 1
+                            pca += 1
                             print("using pca 6")
         else:
             if pca_pred_diff > pca_pred_thresh:
@@ -769,6 +879,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred9 += 1
+                            prediction += 1
                             print("using predicted 9")
                         # ransac pred close, pca pred far, ransac pca far, ransac inconsisent and pca consistent
                         else:
@@ -777,6 +889,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred10 += 1
+                            prediction += 1
                             print("using predicted 10")
                     else:
                         # ransac pred close, pca pred far, ransac pca far, ransac consisent and pca inconsistent
@@ -787,6 +901,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran3 += 1
+                            ransac += 1
                             print("using ransac 3")
                         # ransac pred close, pca pred far, ransac pca far, ransac and pca consisent
                         else:
@@ -796,6 +912,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran4 += 1
+                            ransac += 1
                             print("using ransac 4")
                 else:
                     if ransac_prev_diff > ran_prev_thresh:
@@ -806,6 +924,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred11 += 1
+                            prediction += 1
                             print("using predicted 11")
                         # ransac pred close, pca pred far, ransac pca close, ransac inconsistent and pca consisent
                         else:
@@ -815,6 +935,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca7 += 1
+                            pca += 1
                             print("using pca 7")
                     else:
                         # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca inconsisent
@@ -824,7 +946,9 @@ for i in range(nframes):
                             z_p_k = z_p_k_2.copy()
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
+                            ran5 += 1
                             adapt = False
+                            ransac += 1
                             print("using ransac 5")
                         # ransac pred close, pca pred far, ransac pca close, ransac consistent and pca consisent
                         else:
@@ -834,6 +958,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca8 += 1
+                            pca += 1
                             print("using pca 8")
             else:
                 if ransac_pca_diff > ran_pca_thresh:
@@ -845,6 +971,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred12 += 1
+                            prediction += 1
                             print("using predicted 12")
                         # ransac pred close, pca pred close, ransac pca far, ransac inconsistent and pca consisent
                         else:
@@ -854,6 +982,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca9 += 1
+                            pca += 1
                             print("using pca 9")
                     else:
                         # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca inconsisent
@@ -864,6 +994,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran6 += 1
+                            ransac += 1
                             print("using ransac 6")
                         # ransac pred close, pca pred close, ransac pca far, ransac consistent and pca consisent
                         else:
@@ -873,6 +1005,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca10 += 1
+                            pca += 1
                             print("using pca 10")
                 else:
                     if ransac_prev_diff > ran_prev_thresh:
@@ -883,6 +1017,8 @@ for i in range(nframes):
                             z_p_k = z_p_k_1.copy()
                             z_p1_k = associatedBbox[:, 0]
                             adapt = True
+                            pred13 += 1
+                            prediction += 1
                             print("using predicted 13")
                         # ransac pred close, pca pred close, ransac pca close, ransac inconsistent and pca consisent
                         else:
@@ -892,6 +1028,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_1[:, 0]
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
+                            pca11 += 1
+                            pca += 1
                             print("using pca 11")
                     else:
                         # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca inconsisent
@@ -902,6 +1040,8 @@ for i in range(nframes):
                             z_p1_k = associatedBbox_2[:, 0]
                             associatedBbox = associatedBbox_2.copy()
                             adapt = False
+                            ran7 += 1
+                            ransac += 1
                             print("using ransac 7")
                         # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca consisent
                         else:
@@ -912,6 +1052,8 @@ for i in range(nframes):
                             associatedBbox = associatedBbox_1.copy()
                             adapt = False
                             print("using pca 12")
+                            pca12 += 1
+                            pca += 1
 
     elif i == 0:
         z_q_k = z_q_k_1.copy()
@@ -941,6 +1083,8 @@ for i in range(nframes):
 
         ######################################
 
+    without_correction.append(z_p_k)
+
     if curr_t >= (t_start + t_interval):
         z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
         z_p_k = z_p_k_z
@@ -965,9 +1109,9 @@ for i in range(nframes):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         # ax.legend()
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_zlabel('z')
+        ax.set_xlabel('x (m)')
+        ax.set_ylabel('y (m)')
+        ax.set_zlabel('z (m)')
         ax.title.set_text(
             f'Time={i * dt}s' + '\n' + f'Pred. Length={round(L, 2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
         # width = orange to green, blue to green
@@ -982,12 +1126,12 @@ for i in range(nframes):
         drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2],
                       associatedBbox_1[:, 3],
                       associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7],
-                      'b', 2)
+                      'b', 2, 'PCA')
 
         drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
                       associatedBbox_2[:, 3],
                       associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
-                      'orange', 2)
+                      'orange', 2, 'RANSAC')
 
         # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
         #           associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
@@ -1001,7 +1145,7 @@ for i in range(nframes):
         # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
         # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
         #            label='Vertex 1 Meas.')
-        ax.legend()
+
 
         Rot_measured = quat2rotm(z_q_k_1)
 
@@ -1034,8 +1178,8 @@ for i in range(nframes):
         ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
                 [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
                 color='orange', linewidth=4)
-
-        Rot_measured_2 = R_1_2
+        #
+        # Rot_measured_2 = R_1_2
         # plot measured
         # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
         #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
@@ -1067,7 +1211,7 @@ for i in range(nframes):
                 color='red', linewidth=4)
         ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
                 [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
-                color='red', linewidth=4)
+                color='red', linewidth=4, label='Predicted')
 
         # plot true
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
@@ -1078,7 +1222,7 @@ for i in range(nframes):
                 color='green', linewidth=4)
         ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
                 [z_p_k[2], z_p_k[2] + R_true[2, 2]],
-                color='green', linewidth=4)
+                color='green', linewidth=4, label='True')
 
         # plot b_frame
         # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
@@ -1103,11 +1247,14 @@ for i in range(nframes):
         # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
         # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
+        # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+        # ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
+        # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
+        ax.legend()
+
         plt.show()
 
-        # ax.scatter(x_k[0], x_k[1], x_k[2], color='r' )
-        # ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='b')
-        # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g')
+
 
     # find angular velocity from LOS velocities
     if i > 0:
@@ -1122,15 +1269,15 @@ for i in range(nframes):
     ################ to use Kabsch you need i > 0, to wait for state initializations?
     if i == 0:
         omega_los_L = np.array([0, 0, 0])
-        prev_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        prev_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
         prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
     else:
-        cur_box_L = np.transpose(copy.deepcopy(associatedBbox))
+        cur_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
         cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
         # rotate previous box with everything else
         # prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
         omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
-        prev_box_B = cur_box_B  # for next iteration
+        prev_box_B = cur_box_B.copy()  # for next iteration
 
         # using moving average to smooth out omega_los_B
         omega_kabsch_b_box[i % n_moving_average] = omega_los_B
@@ -1288,6 +1435,11 @@ for i in range(nframes):
         x_op[12:] = normalize_quat(x_op[12:])
         x_k = x_op.copy()
 
+        x_p_k = x_k[0:3]
+        x_p1_k = x_k[9:12]
+        x_q_k = x_k[12:16]
+        rotation_errors.append(quat_angle_diff(x_q_k, q_true[i, :]))
+
         # smooth out covariance off diagonals
         P_k = 0.5 * P_k + 0.5 * P_k.T
 
@@ -1295,6 +1447,8 @@ for i in range(nframes):
         z_q_k_2_previous = z_q_k_2.copy()
 
     z_s.append(z_kp1)
+    z_pcas.append(np.hstack([z_p_k_1, z_omega_k, associatedBbox_1[:, 0], z_q_k_1]))
+    z_rans.append(np.hstack([z_p_k_2, z_omega_k, associatedBbox_2[:, 0], z_q_k_2]))
 
     # Append for analysis
     P_s.append(P_k)
@@ -1304,6 +1458,20 @@ for i in range(nframes):
 ##############
 # Plot relevant figures
 ##############
+
+print("True Pred: " + str(true_pred))
+print("True ran: " + str(true_ran))
+print("True pca: " + str(true_pca))
+print("Used Pred: " + str(prediction))
+print("Used Ran: " + str(ransac))
+print("USEd PCA: " + str(pca))
+print("PCA bins: " + str([pca1, pca2, pca3, pca4, pca5, pca6, pca7, pca8, pca9, pca10, pca11, pca12]))
+print("Pred bins: " + str([pred1, pred2, pred3, pred4, pred5, pred6, pred7, pred8, pred9, pred10, pred11, pred12, pred13]))
+print("Ran bins: " + str([ran1, ran2, ran3, ran4, ran5, ran6, ran7, ran8]))
+
+
+
+
 
 
 m1 = len(x_s)
@@ -1315,42 +1483,108 @@ q_true = np.array(q_true)
 original_pos_meas = np.array(original_pos_meas)
 centroids_inB = np.array(centroids_inB)
 true_pos_inB = np.array(true_pos_inB)
+z_pcas = np.array(z_pcas)
+z_rans = np.array(z_rans)
+without_correction = np.array(without_correction)
+
+
+#####################
+# errors over last 50 seconds
+####################
+
+# position
+start_time_2 = -int(50 / dt)
+rmse_px = np.sqrt(np.mean((x_s[start_time_2:, 0] - debris_pos[start_time_2:nframes, 0]) ** 2))
+rmse_py = np.sqrt(np.mean((x_s[start_time_2:, 1] - debris_pos[start_time_2:nframes, 1]) ** 2))
+rmse_pz = np.sqrt(np.mean((x_s[start_time_2:, 2] - debris_pos[start_time_2:nframes, 2]) ** 2))
+me_px = np.mean(x_s[start_time_2:, 0] - debris_pos[start_time_2:nframes, 0])
+me_py = np.mean(x_s[start_time_2:, 1] - debris_pos[start_time_2:nframes, 1])
+me_pz = np.mean(x_s[start_time_2:, 2] - debris_pos[start_time_2:nframes, 2])
+
+# angular velocity
+rmse_omx = np.sqrt(np.mean((x_s[start_time_2:, 6] - omega_true[0]) ** 2))
+rmse_omy = np.sqrt(np.mean((x_s[start_time_2:, 7] - omega_true[1]) ** 2))
+rmse_omz = np.sqrt(np.mean((x_s[start_time_2:, 8] - omega_true[2]) ** 2))
+me_omx = np.mean((x_s[start_time_2:, 6] - omega_true[0]))
+me_omy = np.mean((x_s[start_time_2:, 7] - omega_true[1]))
+me_omz = np.mean((x_s[start_time_2:, 8] - omega_true[2]))
+
+# linear velocity
+rmse_vdx = np.sqrt(np.mean((x_s[start_time_2:, 3] - debris_vel[start_time_2:nframes, 0]) ** 2))
+rmse_vdy = np.sqrt(np.mean((x_s[start_time_2:, 4] - debris_vel[start_time_2:nframes, 1]) ** 2))
+rmse_vdz = np.sqrt(np.mean((x_s[start_time_2:, 5] - debris_vel[start_time_2:nframes, 2]) ** 2))
+me_vdx = np.mean(x_s[start_time_2:, 3] - debris_vel[start_time_2:nframes, 0])
+me_vdy = np.mean(x_s[start_time_2:, 4] - debris_vel[start_time_2:nframes, 1])
+me_vdz = np.mean(x_s[start_time_2:, 5] - debris_vel[start_time_2:nframes, 2])
+
+# orientation rmse
+rmse_q = np.sqrt(np.mean(np.rad2deg(rotation_errors[start_time_2:nframes]) ** 2))
+
+# bias errors
+b_start = int(t_start / dt)
+b_end = int((t_start + t_interval) / dt)
+rmse_x_before = np.sqrt(np.mean((x_s[b_start:b_end, 0] - debris_pos[b_start:b_end, 0]) ** 2))
+rmse_y_before = np.sqrt(np.mean((x_s[b_start:b_end, 1] - debris_pos[b_start:b_end, 1]) ** 2))
+rmse_z_before = np.sqrt(np.mean((x_s[b_start:b_end, 2] - debris_pos[b_start:b_end, 2]) ** 2))
+me_x_before = np.mean(x_s[b_start:b_end, 0] - debris_pos[b_start:b_end, 0])
+me_y_before = np.mean(x_s[b_start:b_end, 1] - debris_pos[b_start:b_end, 1])
+me_z_before = np.mean(x_s[b_start:b_end, 2] - debris_pos[b_start:b_end, 2])
+
+rmse_x_after = np.sqrt(np.mean((x_s[b_end:, 0] - debris_pos[b_end:nframes, 0]) ** 2))
+rmse_y_after = np.sqrt(np.mean((x_s[b_end:, 1] - debris_pos[b_end:nframes, 1]) ** 2))
+rmse_z_after = np.sqrt(np.mean((x_s[b_end:, 2] - debris_pos[b_end:nframes, 2]) ** 2))
+me_x_after = np.mean(x_s[b_end:, 0] - debris_pos[b_end:nframes, 0])
+me_y_after = np.mean(x_s[b_end:, 1] - debris_pos[b_end:nframes, 1])
+me_z_after = np.mean(x_s[b_end:, 2] - debris_pos[b_end:nframes, 2])
+
+print("Position RMSE: " + str([rmse_px, rmse_py, rmse_pz]))
+print("Position ME: " + str([me_px, me_py, me_pz]))
+print("Ang. Vel. RMSE: " + str([rmse_omx, rmse_omy, rmse_omz]))
+print("Ang. Vel. ME: " + str([me_omx, me_omy, me_omz]))
+print("Lin. Vel. RMSE: " + str([rmse_vdx, rmse_vdy, rmse_vdz]))
+print("Lin. ME: " + str([me_vdx, me_vdy, me_vdz]))
+print("Bias before RMSE: " + str([rmse_x_before, rmse_y_before, rmse_z_before]))
+print("Bias after RMSE: " + str([rmse_x_after, rmse_y_after, rmse_z_after]))
+print("Bias before ME: " + str([me_x_before, me_y_before, me_z_before]))
+print("Bias before ME: " + str([me_x_after, me_y_after, me_z_after]))
+print("Orientation RMSE: " + str(rmse_q))
+
+
 
 plt.rcParams.update({'font.size': 12})
 plt.rcParams['text.usetex'] = True
 
-fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 0] - true_pos_inB[:, 0])
-plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle p_x$ (m)')
+# fig = plt.figure()
+# plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 0] - true_pos_inB[:, 0])
+# plt.xlabel('Time (s)')
+# plt.ylabel('$\displaystyle p_x$ (m)')
+#
+# fig = plt.figure()
+# plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 1] - true_pos_inB[:, 1])
+# plt.xlabel('Time (s)')
+# plt.ylabel('$\displaystyle p_y$ (m)')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 1] - true_pos_inB[:, 1])
-plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle p_y$ (m)')
-
-fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 2] - true_pos_inB[:, 2])
+plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 2] - true_pos_inB[:, 2], label='Computed', color='blue')
+plt.plot(np.arange(0, dt*nframes, dt), np.zeros_like(true_pos_inB), label='True', color='Green', linestyle='--')
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle p_z$ (m)')
+plt.legend()
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_s[:,0] - debris_pos[:,0], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 0] - debris_pos[:,0], label='Original', linewidth=1)
-
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,0] - debris_pos[:,0], label='Estimated', linewidth=2)
-
-# plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,0], label='True', linewidth=1, linestyle='dashed')
-plt.legend()
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,0] - debris_pos[:,0], label='Computed', linewidth=1, color='blue')
+plt.plot(np.arange(0, dt*nframes, dt), without_correction[:, 0] - debris_pos[:,0], label='Original', linewidth=1, color='brown')
+plt.plot(np.arange(0, dt*nframes, dt), np.zeros_like(z_s[:, 0]), label='True', color='green', linestyle='--', linewidth=1)
 plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle p_x$ (m)')
+plt.legend()
 #plt.title('X Position')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_s[:,1] - debris_pos[:,1], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 1] - debris_pos[:,1], label='Original', linewidth=1)
-
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Estimated', linewidth=2)
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,1] - debris_pos[:,1], label='Computed', linewidth=1, color='blue')
+plt.plot(np.arange(0, dt*nframes, dt), without_correction[:, 1] - debris_pos[:,1], label='Original', linewidth=1, color='brown')
+plt.plot(np.arange(0, dt*nframes, dt), np.zeros_like(z_s[:, 1]), label='True', color='green', linestyle='--', linewidth=1)
+# plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Estimated', linewidth=2)
 # plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
 
 plt.legend()
@@ -1359,9 +1593,9 @@ plt.ylabel('$\displaystyle p_y$ (m)')
 #plt.title('Y Position')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt*nframes, dt), z_s[:,2] - debris_pos[:,2], label='Computed', linewidth=1)
-plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,2] - debris_pos[:,2], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt*nframes, dt), original_pos_meas[:, 2] - debris_pos[:,2], label='Original', linewidth=1)
+plt.plot(np.arange(0, dt*nframes, dt), z_s[:,2] - debris_pos[:,2], label='Computed', linewidth=1, color='blue')
+plt.plot(np.arange(0, dt*nframes, dt), without_correction[:, 2] - debris_pos[:,2], label='Original', linewidth=1, color='brown')
+plt.plot(np.arange(0, dt*nframes, dt), np.zeros_like(z_s[:, 2]), label='True', color='green', linestyle='--', linewidth=1)
 
 # plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
@@ -1372,7 +1606,6 @@ plt.ylabel('$\displaystyle p_z$ (m)')
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.legend()
 ax.set_xlabel('x (m)')
 ax.set_ylabel('y (m)')
 ax.set_zlabel('z (m)')
@@ -1380,44 +1613,44 @@ ax.scatter(debris_pos[1, 0], debris_pos[1, 1], debris_pos[1, 2], color='orange',
 ax.scatter(debris_pos[-1, 0], debris_pos[-1, 1], debris_pos[-1, 2], color='k', marker='o', s=20)
 ax.scatter(z_s[:, 0], z_s[:, 1], z_s[:, 2], color='b', s=0.3, linewidths=0)
 ax.plot(debris_pos[:, 0], debris_pos[:, 1], debris_pos[:, 2], color='g')
-plt.legend(['Start', 'End', 'Computed Centroid Positions', 'True Centroid Positions'])
-plt.xlim([-170.5, -167.5])
-plt.ylim([-351, -306])
-ax.set_zlim(-20, -9)
+ax.legend(['Start', 'End', 'Computed Centroid Positions', 'True Centroid Positions'])
+# plt.xlim([-170.5, -167.5])
+# plt.ylim([-351, -306])
+# ax.set_zlim(-20, -9)
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 3], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt * nframes, dt), omega_true[0] * np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle\Omega_x$ (rad/s)')
+plt.ylabel('$\displaystyle \Omega_x$ (rad/s)')
 # plt.title('$\displaystyle\Omega_x$')
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 4], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt * nframes, dt), omega_true[1] * np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle\Omega_y$ (rad/s)')
+plt.ylabel('$\displaystyle \Omega_y$ (rad/s)')
 # plt.title('Omega Y')
 
 
 fig = plt.figure()
 plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 5], label='Computed', linewidth=1)
 plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8], label='Estimated', linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
+plt.plot(np.arange(0, dt * nframes, dt), omega_true[2] * np.ones([nframes, 1]), label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle\Omega_z$ (rad/s)')
+plt.ylabel('$\displaystyle \Omega_z$ (rad/s)')
 # plt.title('Omega Z')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6] - omega_true[0], label='Error $\displaystyle\Omega_x$', linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7] - omega_true[1], label='Error $\displaystyle\Omega_y$', linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8] - omega_true[2], label='Error $\displaystyle\Omega_z$', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6] - omega_true[0], label='Error $\displaystyle \Omega_x$', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7] - omega_true[1], label='Error $\displaystyle \Omega_y$', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8] - omega_true[2], label='Error $\displaystyle \Omega_z$', linewidth=2)
 # plt.plot(np.arange(0, dt*nframes, dt), np.zeros([nframes,1]), linewidth = 1) # draw line at zero
 plt.legend()
 plt.xlabel('Time (s)')
@@ -1429,7 +1662,7 @@ plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 0] - debris_pos[:nframes, 0], la
          linewidth=2)
 plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 1] - debris_pos[:nframes, 1], label='Error $\displaystyle p_y$',
          linewidth=2)
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2] - debris_pos[:nframes, 2], label='Error $\displaystyle p_x$',
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2] - debris_pos[:nframes, 2], label='Error $\displaystyle p_z$',
          linewidth=2)
 
 plt.legend()
@@ -1465,11 +1698,11 @@ plt.ylabel('$\displaystyle p_z$ (m)')
 # plt.title('Z Position')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3] - debris_vel[:nframes, 0], label='Error $\displaystyle v_{Tx}$',
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3] - debris_vel[:nframes, 0], label='Error $\displaystyle v_{Dx}$',
          linewidth=1)
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4] - debris_vel[:nframes, 1], label='Error $\displaystyle v_{Ty}$',
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4] - debris_vel[:nframes, 1], label='Error $\displaystyle v_{Dy}$',
          linewidth=1)
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5] - debris_vel[:nframes, 2], label='Error $\displaystyle v_{Tz}$',
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5] - debris_vel[:nframes, 2], label='Error $\displaystyle v_{Dz}$',
          linewidth=1)
 
 plt.legend()
@@ -1478,27 +1711,27 @@ plt.ylabel('Velocity Error (m/s)')
 # plt.title('Velocity Errors')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3], label='Estimated')
-plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 0], label='True')
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3], label='Estimated', color='Orange', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 0], label='True', color='green', linewidth=1, linestyle='--')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle v_{Tx}$ (m/s)')
+plt.ylabel('$\displaystyle v_{Dx}$ (m/s)')
 # plt.title('Velocity in X')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4], label='Estimated')
-plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 1], label='True')
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4], label='Estimated', color='Orange', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 1], label='True', color='green', linewidth=1, linestyle='--')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle v_{Ty}$ (m/s)')
+plt.ylabel('$\displaystyle v_{Dy}$ (m/s)')
 # plt.title('Velocity in y')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5], label='Estimated')
-plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 2], label='True')
+plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5], label='Estimated', color='Orange', linewidth=2)
+plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 2], label='True', color='green', linewidth=1, linestyle='--')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle v_{Tz}$ (m/s)')
+plt.ylabel('$\displaystyle v_{Dz}$ (m/s)')
 # plt.title('Velocity in z')
 
 fig = plt.figure()
@@ -1516,7 +1749,7 @@ plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 12], label='Estimated', linewidt
 plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle q_0$')
+plt.ylabel('$\displaystyle q_w$')
 # plt.title('Orientation $\displaystyle q_0$')
 
 fig = plt.figure()
@@ -1525,7 +1758,7 @@ plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 13], label='Estimated', linewidt
 plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 1], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle q_1$')
+plt.ylabel('$\displaystyle q_x$')
 # plt.title('Orientation $\displaystyle q_1$')
 
 fig = plt.figure()
@@ -1534,7 +1767,7 @@ plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 14], label='Estimated', linewidt
 plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle q_2$')
+plt.ylabel('$\displaystyle q_y$')
 # plt.title('Orientation $\displaystyle q_2$')
 
 fig = plt.figure()
@@ -1543,7 +1776,7 @@ plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 15], label='Estimated', linewidt
 plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
 plt.legend()
 plt.xlabel('Time (s)')
-plt.ylabel('$\displaystyle q_3$')
+plt.ylabel('$\displaystyle q_z$')
 # plt.title('Orientation $\displaystyle q_3$')
 
 
