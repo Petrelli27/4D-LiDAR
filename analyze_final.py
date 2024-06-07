@@ -383,6 +383,8 @@ q_kp1s =[]
 metrics = []
 z_s_all = []
 without_correction = []
+bbox1_dimensions =[]
+bbox2_dimensions = []
 
 # ukf weight values
 alpha = 1e-1
@@ -642,7 +644,7 @@ for i in range(nframes):
     associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1,
                                                           R_1)  # L: along x-axis, W: along y-axis D: along z-axis
     z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-    associatedBbox_2, Lm_2, Wm_2, D_m2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
+    associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
     z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
     if i == 0:
@@ -1084,7 +1086,8 @@ for i in range(nframes):
         ######################################
 
     without_correction.append(z_p_k)
-
+    bbox1_dimensions.append([Lm, Wm, Dm])
+    bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
     if curr_t >= (t_start + t_interval):
         z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
         z_p_k = z_p_k_z
@@ -1119,7 +1122,7 @@ for i in range(nframes):
         # height = orange to magenta, blue to magenta
         ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
         # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
-        ax.set_aspect('equal', 'box')
+
 
         # print(x_kp1)
         # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
@@ -1251,7 +1254,7 @@ for i in range(nframes):
         # ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
         # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
         ax.legend()
-
+        ax.set_aspect('equal', 'box')
         plt.show()
 
 
