@@ -385,6 +385,7 @@ z_s_all = []
 without_correction = []
 bbox1_dimensions =[]
 bbox2_dimensions = []
+bbox3_dimensions = [2*(p_0 - p1_0)]
 
 # ukf weight values
 alpha = 1e-1
@@ -1442,6 +1443,8 @@ for i in range(nframes):
         x_p1_k = x_k[9:12]
         x_q_k = x_k[12:16]
         rotation_errors.append(quat_angle_diff(x_q_k, q_true[i, :]))
+        Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
+        bbox3_dimensions.append([Le, We, De])
 
         # smooth out covariance off diagonals
         P_k = 0.5 * P_k + 0.5 * P_k.T
@@ -1489,6 +1492,9 @@ true_pos_inB = np.array(true_pos_inB)
 z_pcas = np.array(z_pcas)
 z_rans = np.array(z_rans)
 without_correction = np.array(without_correction)
+bbox1_dimensions = np.array(bbox1_dimensions)
+bbox2_dimensions = np.array(bbox2_dimensions)
+bbox3_dimensions = np.array(bbox3_dimensions)
 
 
 #####################
@@ -1782,7 +1788,32 @@ plt.xlabel('Time (s)')
 plt.ylabel('$\displaystyle q_z$')
 # plt.title('Orientation $\displaystyle q_3$')
 
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 0], label='Length')
+plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 1], label='Width')
+plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 2], label='Height')
+plt.legend()
+plt.title('PCA Box Dimensions')
+plt.xlabel('Time (s)')
+plt.ylabel('Size (m)')
 
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 0], label='Length')
+plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 1], label='Width')
+plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 2], label='Height')
+plt.legend()
+plt.title('RANSAC Box Dimensions')
+plt.xlabel('Time (s)')
+plt.ylabel('Size (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 0], label='Length')
+plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 1], label='Width')
+plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 2], label='Height')
+plt.legend()
+plt.title('Filtered Box Dimensions')
+plt.xlabel('Time (s)')
+plt.ylabel('Size (m)')
 """
 fig = plt.figure()
 true_b = []
