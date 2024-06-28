@@ -83,7 +83,7 @@ if __name__ == '__main__':
     omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
     # specify time frame and time step
-    nframes = 400
+    nframes = 80
     dt = 0.05
 
     # simulate debris velocity (linear and angular) in {L} frame from dynamics
@@ -126,13 +126,13 @@ if __name__ == '__main__':
     # Unpack the results
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_B = zip(*results)
 
-    # Convert lists to numpy arrays if needed
-    XBs = np.array(XBs)
-    YBs = np.array(YBs)
-    ZBs = np.array(ZBs)
-    PBs = np.array(PBs)
-    VBs = np.array(VBs)
-    Rot_L_to_B = np.array(Rot_L_to_B)
+    # # Convert lists to numpy arrays if needed
+    # XBs = np.array(XBs)
+    # YBs = np.array(YBs)
+    # ZBs = np.array(ZBs)
+    # PBs = np.array(PBs)
+    # VBs = np.array(VBs)
+    # Rot_L_to_B = np.array(Rot_L_to_B)
 
     # Your existing code to save the data...
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     data.append(XBs)
     data.append(YBs)
     data.append(ZBs)
-    # data.append(PBs)
+    data.append(PBs)
     data.append(VBs)
     data.append(debris_pos)
     data.append(debris_vel)
