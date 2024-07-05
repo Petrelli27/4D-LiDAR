@@ -125,8 +125,8 @@ if __name__ == '__main__':
     ax.set_zlabel('z')
 
     # Create a pool of workers
-    # pool = mp.Pool(processes=mp.cpu_count())
-    pool = mp.Pool(processes=8)
+    pool = mp.Pool(processes=mp.cpu_count())
+    # pool = mp.Pool(processes=8)
 
     # Prepare arguments for each frame
     args = [(i, debris_file, debris_pos, debris_vel, omega_L, dt, r0, rdot0, omeg, res_box, ang_res) for i in range(nframes)]

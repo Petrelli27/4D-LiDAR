@@ -26,7 +26,7 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
     # Perform ray casting
     locations, index_ray, index_tri = sat_mesh.ray.intersects_location(
         ray_origins=np.tile(O_B, (len(rays), 1)),
-        ray_directions=rays
+        ray_directions=rays, multiple_hits=False
     )
 
     # If no intersections, return empty arrays

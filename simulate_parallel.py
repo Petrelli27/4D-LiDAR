@@ -19,6 +19,20 @@ def tilde(v):
     v_tilde = np.array([[0,-vz,vy],[vz,0,-vx],[-vy,vx,0]])
     return v_tilde
 
+def skew(vector):
+    vector = list(vector)
+    return np.array([[0, -vector[2], vector[1]],
+                     [vector[2], 0, -vector[0]],
+                     [-vector[1], vector[0], 0]])
+
+def rodrigues(omega, phi):
+    e_omega = omega / np.linalg.norm(omega)  # Unit vector along omega
+    ee_t = np.matmul(e_omega.reshape(len(e_omega), 1), e_omega.reshape(1, len(e_omega)))
+    e_tilde = skew(e_omega)
+    R = ee_t + (np.eye(len(e_omega)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
+    return R
+
+
 def getR(x,y,z):
     # we want to find the rotation matrix that takes [x,y,z] to [0,0,1]
     p = np.array([x,y,z]) # position vector, but also z-axis of b frame
@@ -66,24 +80,93 @@ def process_frame(i, debris_file, debris_pos, debris_vel, omega_L, dt, r0, rdot0
 import multiprocessing as mp
 
 if __name__ == '__main__':
+
+    ########################################
+    # Ranges
+    ########################################
+    # -450m to -30m for position
+    # -1 to 1 m/s for velocity
+    # -1 rad/s to 1 rad/s for angular velocity
+    # normal, 45 degrees, 90 degrees about rotation axis for orientation
+
+    # Test case
+    # start far -- case study
+    # start close  -- set 3
+    # approaching fast -- set 4
+    # approaching slow -- set 3
+    # stationary -- set 5
+    # going away slow
+    # going away fast
+    # spinning fast -- set 1
+    # spinning slow -- set 3
+    # not spinning -- set 4
+    # long simulation
+
+
+
+
     # Your existing initialization code here...
     # initialize debris position, velocity and orientation
     O_B = np.array([0,0,0])
     O_L = np.array([0,0,0])
     # Dynamics initializations
+    # Case study
     # r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
     # rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
     r0 = [-0.17, -0.35, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
     rdot0 = [0.000, 0.00045, -0.0002]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([-0.5, 0.3, 1])  # inertial, unchanging angular velocity of debris
+    file_name = 'sim_kompsat_journal.pickle'
+
+    # set 1
+    r0 = [-0.1, -0.3, -0.03]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [0.001, 0.00045, 0.0000]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([1, 0.0, 1])  # inertial, unchanging angular velocity of debris
+    file_name = 'sim_kompsat_journal_1.pickle'
+
+    # set 2
+    r0 = [-0.04, -0.06, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [0.000, 0.00045, -0.0001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([0.8, 1.0, -0.2])  # inertial, unchanging angular velocity of debris
+    file_name = 'sim_kompsat_journal_2.pickle'
+
+    # set 3
+    r0 = [-0.0, -0.02, 0.005]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [0.000, 0.00005, -0.00001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([0.01, -0.02, -0.05])  # inertial, unchanging angular velocity of debris
+    Rot_0 = rodrigues(omega_L, np.deg2rad(45))  # initial starting rotation matrix/orientation
+    file_name = 'sim_kompsat_journal_3.pickle'
+
+    # set 4
+    r0 = [-0.200, -0.100, 0.05]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [0.0001, 0.0009, -0.0001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([0.00, -0.0, 1e-8])  # inertial, unchanging angular velocity of debris
+    Rot_0 = rodrigues(omega_L, np.deg2rad(45))  # initial starting rotation matrix/orientation
+    file_name = 'sim_kompsat_journal_4.pickle'
+
+    # set 5
+    r0 = [-0.200, -0.100, 0.05]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [0.0000, 0.0000, -0.0000]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([0.50, 0.2, 0])  # inertial, unchanging angular velocity of debris
+    Rot_0 = rodrigues(omega_L, np.deg2rad(90))  # initial starting rotation matrix/orientation
+    file_name = 'sim_kompsat_journal_5.pickle'
+
+    # set 6
+    r0 = [-0.05, -0.05, -0.05]  # initial starting position of chaser (km) - New initial conditions!!
+    rdot0 = [-0.00007, -0.00007, -0.00007]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+    omega_L = np.array([0.20, 0.01, -0.8])  # inertial, unchanging angular velocity of debris
+    Rot_0 = rodrigues(omega_L, np.deg2rad(90))  # initial starting rotation matrix/orientation
+    file_name = 'sim_kompsat_journal_6.pickle'
+
+
     R = 670 + 6378  # Altitude of orbit (km)
     mu = 398600.5  # Gravitational constant
     omeg = math.sqrt(mu / R ** 3)  # n in the derivations
-    Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-    omega_L = np.array([-0.5, 0.3, 1]) # inertial, unchanging angular velocity of debris
+
     omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
     # specify time frame and time step
-    nframes = 80
+    nframes = 2000
     dt = 0.05
 
     # simulate debris velocity (linear and angular) in {L} frame from dynamics
@@ -147,5 +230,5 @@ if __name__ == '__main__':
     data.append(Rot_L_to_B)
     data.append(omega_L)
     data.append(dt)
-    with open('sim_kompsat_parallel_test.pickle', 'wb') as sim_data:
+    with open(file_name, 'wb') as sim_data:
         pickle.dump(data, sim_data)
