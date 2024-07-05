@@ -268,7 +268,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0, 0, 0])
 O_L = np.array([0, 0, 0])
 
-with open('sim_kompsat_journal.pickle', 'rb') as sim_data:
+with open('sim_kompsat_trimesh_test.pickle', 'rb') as sim_data:
     # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
     # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
@@ -302,9 +302,12 @@ nframes = len(VBs)
 # Initializations in L Frame
 vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 omega_0 = [-1, 0, 1.]
-omega_true = [-0.5, 0.3, 1.]
+# omega_true = np.array([0.01, -0.02, -0.05])
+omega_true = np.array([0.8, 1.0, -0.2])
+omega_true = omega_true = np.array([0.00, -0.0, 1e-8])
 q_ini = [1., 0., 0., 0.]
-q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+# q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
+q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues(omega_L, np.deg2rad(45)))))
 q_true_alt = -q_true
 
 p_0 = np.array([-180., -320., -10.])
@@ -452,7 +455,7 @@ true_pca = 0
 for i in range(nframes):
 
     print(i)
-    # visualize_flag = i>40*20 and i%20==0
+    # visualize_flag = i>33*20 and i%5==0
     visualize_flag = False
 
     # if i > 200:
@@ -565,7 +568,9 @@ for i in range(nframes):
 
     # Return bounding box and centroid estimate of bounding box
     z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, True, False)
+    if i == 0:
+        q_kp1 = q_ini
+    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
     ############
     # bias removal
@@ -668,8 +673,8 @@ for i in range(nframes):
         ran_pred_thresh = 20
         pca_pred_thresh = 20
         ran_pca_thresh = 25
-        pca_prev_thresh = 10
-        ran_prev_thresh = 10
+        pca_prev_thresh = 1
+        ran_prev_thresh = 1
         # pred_prev_diff = 15
 
         if pca_true_diff < 20 or ransac_true_diff < 20:
@@ -1048,15 +1053,15 @@ for i in range(nframes):
                             print("using ransac 7")
                         # ransac pred close, pca pred close, ransac pca close, ransac consistent and pca consisent
                         else:
-                            z_q_k = z_q_k_1.copy()
-                            z_pi_k = z_pi_k_1.copy()
-                            z_p_k = z_p_k_1.copy()
-                            z_p1_k = associatedBbox_1[:, 0]
-                            associatedBbox = associatedBbox_1.copy()
+                            z_q_k = z_q_k_2.copy()
+                            z_pi_k = z_pi_k_2.copy()
+                            z_p_k = z_p_k_2.copy()
+                            z_p1_k = associatedBbox_2[:, 0]
+                            associatedBbox = associatedBbox_2.copy()
                             adapt = False
-                            print("using pca 12")
+                            print("using ransac 8")
                             pca12 += 1
-                            pca += 1
+                            ransac += 1
 
     elif i == 0:
         z_q_k = z_q_k_1.copy()
@@ -1251,9 +1256,9 @@ for i in range(nframes):
         # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
         # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
-        # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
-        # ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
-        # ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
+        ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+        ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
+        ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
         ax.legend()
         ax.set_aspect('equal', 'box')
         plt.show()

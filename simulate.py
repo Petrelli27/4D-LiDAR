@@ -29,21 +29,40 @@ def getR(x,y,z):
     R = e@(e.T) + (np.identity(3)-(e@e.T))*np.cos(phi) + tilde(e)*np.sin(phi)
     return R.T
 
+# Dynamics initializations
+
+# Case study
+# r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
+# rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
+r0 = [-0.17, -0.35, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
+rdot0 = [0.000, 0.00045, -0.0002]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+omega_L = np.array([-0.5, 0.3, 1]) # inertial, unchanging angular velocity of debris
+file_name = 'sim_kompsat_journal.pickle'
+
+# set 1
+r0 = [-0.1, -0.3, -0.03]  # initial starting position of chaser (km) - New initial conditions!!
+rdot0 = [0.001, 0.00045, 0.0000]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+omega_L = np.array([1, 0.0, 1]) # inertial, unchanging angular velocity of debris
+file_name = 'sim_kompsat_journal_1.pickle'
+
+# set 2
+r0 = [-0.04, -0.06, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
+rdot0 = [0.000, 0.00045, -0.0001]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+omega_L = np.array([0.8, 1.0, -0.2])  # inertial, unchanging angular velocity of debris
+file_name = 'sim_kompsat_journal_2.pickle'
 
 
 # initialize debris position, velocity and orientation
 O_B = np.array([0,0,0])
 O_L = np.array([0,0,0])
-# Dynamics initializations
-# r0 = [0, -0.004, 0]  # initial starting position of chaser (km)
-# rdot0 = [-0.0001, 0.0, 0.0001]  # initial velocity of debris relative to chaser(km/s)
-r0 = [-0.17, -0.35, 0.03]  # initial starting position of chaser (km) - New initial conditions!!
-rdot0 = [0.000, 0.00045, -0.0002]  # initial velocity of debris relative to chaser(km/s) - New initial conditions!!
+
+
+
 R = 670 + 6378  # Altitude of orbit (km)
 mu = 398600.5  # Gravitational constant
 omeg = math.sqrt(mu / R ** 3)  # n in the derivations
 Rot_0 = np.identity(3) # initial starting rotation matrix/orientation
-omega_L = np.array([-0.5, 0.3, 1]) # inertial, unchanging angular velocity of debris
+
 omega_L_axis = omega_L/np.linalg.norm(omega_L)
 
 # specify time frame and time step
@@ -172,6 +191,6 @@ data.append(debris_vel)
 data.append(Rot_L_to_B)
 data.append(omega_L)
 data.append(dt)
-with open('sim_kompsat_journal.pickle', 'wb') as sim_data:
+with open(file_name, 'wb') as sim_data:
     pickle.dump(data, sim_data)
 

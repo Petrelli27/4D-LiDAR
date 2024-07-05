@@ -61,7 +61,7 @@ def gram_schmidt(vectors):
     return np.array(basis)
 
 
-def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
+def boundingbox3D_RANSAC(x, y, z, q_kp1, return_evec=False, visualize=False):
     # Apply Ransac to remove bad points that are alone
     points = np.vstack((x, y, z)).T  # orginal point cloud
     pcd = o3d.geometry.PointCloud()
@@ -69,10 +69,10 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
 
     # Apply RANSAC to segment a plane
     # Parameters
-    distance_threshold = 0.2  # Adjust based on your data
-    ransac_n = 10
+    distance_threshold = 0.1  # Adjust based on your data
+    ransac_n = 3
     num_iterations = 1000
-    min_inliers = 10  # Minimum number of inliers to consider a plane valid
+    min_inliers = 3  # Minimum number of inliers to consider a plane valid
     # Container for all planes
     all_planes = []
     all_points = np.array([0, 0, 0])  # final point cloud
@@ -137,10 +137,27 @@ def boundingbox3D_RANSAC(x, y, z, return_evec=False, visualize=False):
     # Sort the pairs by values in decreasing order
     sorted_pairs = sorted(paired_list, key=lambda x: x[0], reverse=True)
 
+    ############
+    # try using predicted orientation to sort
+    ###########
+
+    R = quat2rotm(q_kp1)
+    new_ranking = np.zeros((len(R), len(normal_vecs)))
+    for idx, vec in enumerate(normal_vecs):
+        for jdx, r_col in enumerate(R.T):
+            new_ranking[jdx, idx] = custom_arccos(np.dot(r_col, vec))
+
+
+    min_indices = np.argmin(new_ranking, axis=1)
+    min_values = new_ranking[np.arange(new_ranking.shape[0]), min_indices]
+    min_val_indices = np.argsort(min_values)
+    min_indices_sorted = min_indices[min_val_indices]
+    # sorted_vectors = normal_vecs[min_indices_sorted, :]
+    sorted_vectors = normal_vecs[min_indices_sorted]
     # Unzip the sorted pairs
-    sorted_values, sorted_vectors = zip(*sorted_pairs)
+    # sorted_values, sorted_vectors = zip(*sorted_pairs)
     # sorted_vectors = np.array(sorted_vectors)
-    sorted_vectors = normal_vecs
+    # sorted_vectors = normal_vecs
 
     # update points
     points = all_points[1:, :]  # one to get rid of zero zero zero from beginning
