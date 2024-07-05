@@ -31,9 +31,24 @@ def getR(x,y,z):
     R = e@(e.T) + (np.identity(3)-(e@e.T))*np.cos(phi) + tilde(e)*np.sin(phi)
     return R.T
 
+def visualize_trimesh(mesh, intersections):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the mesh
+    ax.add_collection3d(mplot3d.art3d.Poly3DCollection(mesh.vertices[mesh.faces], alpha=0.5))
+
+    # Plot the intersection points
+    ax.scatter(intersections[:, 0], intersections[:, 1], intersections[:, 2], c='r', s=20)
+
+    # Set axis limits
+    ax.set_xlim(mesh.bounds[:, 0])
+    ax.set_ylim(mesh.bounds[:, 1])
+    ax.set_zlim(mesh.bounds[:, 2])
+
+    plt.show()
+
 def process_frame(i, debris_file, debris_pos, debris_vel, omega_L, dt, r0, rdot0, omeg, res_box, ang_res):
-    print(f"Processing frame: {i}")
-    
     x, y, z = debris_pos[i]
     vx, vy, vz = debris_vel[i]
     d = np.linalg.norm(debris_pos[i])
@@ -74,6 +89,8 @@ def process_frame(i, debris_file, debris_pos, debris_vel, omega_L, dt, r0, rdot0
     omega_B = Rot_L_to_B @ omega_L
     X, Y, Z, V_los = lidarScan3.point_cloud(np.array([0,0,0]), h_resolution, v_resolution, h_range, v_range, debris, debris_pos_B, debris_vel_B, omega_B)
     P = np.vstack([X, Y, Z]).T
+    # visualize_trimesh(debris, np.column_stack((X,Y,Z)))
+    print(f"Processing frame: {i}")
 
     return X, Y, Z, P, V_los, Rot_L_to_B
 
@@ -126,7 +143,6 @@ if __name__ == '__main__':
 
     # Create a pool of workers
     pool = mp.Pool(processes=mp.cpu_count())
-    # pool = mp.Pool(processes=8)
 
     # Prepare arguments for each frame
     args = [(i, debris_file, debris_pos, debris_vel, omega_L, dt, r0, rdot0, omeg, res_box, ang_res) for i in range(nframes)]
