@@ -82,17 +82,17 @@ def propagate(dt, nframes, r0, rdot0, omeg):
         vys.append(rdot_vec[1] * m2km)
         vzs.append(rdot_vec[2] * m2km)
 
-    fig = plt.figure
-    ax = plt.axes(projection='3d')
-    ax.set_xlabel('x (m)')
-    ax.set_ylabel('y (m)')
-    ax.set_zlabel('z (m)')
-    ax.plot3D(xs, ys, zs, 'gray')
-    print(ds)
-    plt.show()
+    # fig = plt.figure
+    # ax = plt.axes(projection='3d')
+    # ax.set_xlabel('x (m)')
+    # ax.set_ylabel('y (m)')
+    # ax.set_zlabel('z (m)')
+    # ax.plot3D(xs, ys, zs, 'gray')
+    # print(ds)
+    # plt.show()
 
 
-    return xs, ys, zs, vxs, vys, vzs, ds, v
+    return xs, ys, zs, vxs, vys, vzs, ds, vs
 
 if __name__ == '__main__':
 
