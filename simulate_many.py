@@ -95,9 +95,9 @@ def get_initial_conditions(conditions_count=0):
         } for s in starts
     ]
 
-    if len(starts_dict) >= 2:
-        starts_dict[0]['nframes'] = 5000  # First condition with 5000 frames
-        starts_dict[1]['nframes'] = 10000  # Second condition with 10000 frames
+    
+    starts_dict[0]['nframes'] = 1000  # different number for first 
+    starts_dict[1]['nframes'] = 10000  # Second condition with 10000 frames
     
     if conditions_count == 0:
         return starts_dict
@@ -156,7 +156,7 @@ def run_single_simulation(sim_parameters):
     return simulation_data
 
 if __name__ == '__main__':
-    initial_conditions_list = get_initial_conditions(2)
+    initial_conditions_list = get_initial_conditions(1)
 
     # Create a pool of workers
     pool = mp.Pool(processes=mp.cpu_count())

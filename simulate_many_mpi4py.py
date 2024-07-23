@@ -159,7 +159,7 @@ if __name__ == '__main__':
     size = comm.Get_size()
 
     try:
-        initial_conditions_list = list(get_initial_conditions(3))
+        initial_conditions_list = list(get_initial_conditions(100))
         
         # Distribute work among processes
         local_conditions = np.array_split(initial_conditions_list, size)[rank]
