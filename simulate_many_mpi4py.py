@@ -1,16 +1,13 @@
 import dynamics
-import math
 import matplotlib.pyplot as plt
 import numpy as np
 import math
 import lidarScan3
 import trimesh
 import pickle
-import multiprocessing as mp
 import itertools
-
-from mpl_toolkits import mplot3d
-from matplotlib import pyplot
+import os
+from mpi4py import MPI
 
 # some utility functions
 def tilde(v):
@@ -31,7 +28,7 @@ def getR(x,y,z):
     R = e@(e.T) + (np.identity(3)-(e@e.T))*np.cos(phi) + tilde(e)*np.sin(phi)
     return R.T
 
-def process_frame(i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, omeg, res_box, ang_res):
+def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, omeg, res_box, ang_res):
     x, y, z = debris_pos[i]
     vx, vy, vz = debris_vel[i]
     d = np.linalg.norm(debris_pos[i])
@@ -62,7 +59,7 @@ def process_frame(i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, 
     X, Y, Z, V_los = lidarScan3.point_cloud(np.array([0,0,0]), h_resolution, v_resolution, h_range, v_range, debris, debris_pos_B, debris_vel_B, omega_B)
     P = np.vstack([X, Y, Z]).T
     # visualize_trimesh(debris, np.column_stack((X,Y,Z)))
-    print(f"Processing frame: {i}")
+    print(f"Process {rank} processing frame: {i}")
 
     return X, Y, Z, P, V_los, Rot_L_to_B
 
@@ -81,7 +78,7 @@ def get_initial_conditions(conditions_count=0):
     omy = [0.8, 0.3]
     omz = [0.6, -0.2]
     angle_0 = [0, 45, 90]
-   
+    
     starts = list(itertools.product(px, py, pz, vx, vy, vz, angle_0, omx, omy, omz, mean_motions))
     
     starts_dict = [
@@ -94,7 +91,8 @@ def get_initial_conditions(conditions_count=0):
             'nframes': 4000  # default value
         } for s in starts
     ]
-
+    
+    # Modify specific conditions to have higher nframes
     if len(starts_dict) >= 2:
         starts_dict[0]['nframes'] = 5000  # First condition with 5000 frames
         starts_dict[1]['nframes'] = 10000  # Second condition with 10000 frames
@@ -104,9 +102,7 @@ def get_initial_conditions(conditions_count=0):
     else:
         return starts_dict[:conditions_count]
 
-
-
-def run_single_simulation(sim_parameters):
+def run_single_simulation(rank, sim_parameters):
     r0 = np.array([sim_parameters['px'], sim_parameters['py'], sim_parameters['pz']])
     rdot0 = np.array([sim_parameters['vx'], sim_parameters['vy'], sim_parameters['vz']])
     omega_L = np.array([sim_parameters['omx'], sim_parameters['omy'], sim_parameters['omz']])
@@ -138,7 +134,7 @@ def run_single_simulation(sim_parameters):
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs = [], [], [], [], [], []
 
     for i in range(nframes):
-        X, Y, Z, P, V_los, Rot_L_to_B = process_frame(i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, mean_motion, res_box, ang_res)
+        X, Y, Z, P, V_los, Rot_L_to_B = process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, mean_motion, res_box, ang_res)
         XBs.append(X)
         YBs.append(Y)
         ZBs.append(Z)
@@ -154,21 +150,46 @@ def run_single_simulation(sim_parameters):
     }
 
     return simulation_data
+ 
 
 if __name__ == '__main__':
-    initial_conditions_list = get_initial_conditions(2)
+    # Initialize MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
 
-    # Create a pool of workers
-    pool = mp.Pool(processes=mp.cpu_count())
+    try:
+        initial_conditions_list = list(get_initial_conditions(3))
+        
+        # Distribute work among processes
+        local_conditions = np.array_split(initial_conditions_list, size)[rank]
 
-    # Run the simulations in parallel
-    results = pool.map(run_single_simulation, initial_conditions_list)
+        # Run simulations on this process
+        local_results = []
+        for conditions in local_conditions:
+            result = run_single_simulation(rank, conditions)
+            if result is not None:
+                local_results.append(result)
 
-    # Close the pool
-    pool.close()
-    pool.join()
+        # Save results from this process
+        os.makedirs('results', exist_ok=True)
+        with open(f'results/sim_kompsat_trimesh_test_rank_{rank}.pickle', 'wb') as sim_data:
+            pickle.dump(local_results, sim_data)
 
-    # Save the results
-    for i, simulation_data in enumerate(results):
-        with open(f'sim_kompsat_trimesh_test_{i}.pickle', 'wb') as sim_data:
-            pickle.dump(simulation_data, sim_data)
+        # Synchronize processes
+        comm.Barrier()
+
+        # Process 0 combines results
+        if rank == 0:
+            all_results = []
+            for i in range(size):
+                with open(f'results/sim_kompsat_trimesh_test_rank_{i}.pickle', 'rb') as sim_data:
+                    all_results.extend(pickle.load(sim_data))
+            
+            for i, simulation_data in enumerate(all_results):
+                with open(f'results/sim_kompsat_trimesh_test_{i}.pickle', 'wb') as sim_data:
+                    pickle.dump(simulation_data, sim_data)
+
+    except Exception as e:
+        print(f"Error on process {rank}: {str(e)}")
+        comm.Abort(1)  # Abort all MPI processes if an error occurs
