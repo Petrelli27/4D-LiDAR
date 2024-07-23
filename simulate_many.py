@@ -52,8 +52,9 @@ def process_frame(i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, 
     Rot_4by4[:3,:3] = Rot_L_to_B
     debris.apply_transform(Rot_4by4)
     axis = Rot_L_to_B @ (omega_L / np.linalg.norm(omega_L))
+    angle_0_rad = np.deg2rad(angle_0)
     angle = np.linalg.norm(omega_L * dt * i)
-    debris.apply_transform(trimesh.transformations.rotation_matrix(angle_0 + angle, axis))
+    debris.apply_transform(trimesh.transformations.rotation_matrix(angle_0_rad + angle, axis))
 
     debris.apply_transform(trimesh.transformations.translation_matrix(debris_pos_B))
     
