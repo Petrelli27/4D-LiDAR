@@ -1,11 +1,9 @@
 import dynamics
 import matplotlib.pyplot as plt
 import numpy as np
-import math
 import lidarScan3
 import trimesh
 import pickle
-import itertools
 import os
 from mpi4py import MPI
 
@@ -63,44 +61,59 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
 
     return X, Y, Z, P, V_los, Rot_L_to_B
 
-def get_initial_conditions(conditions_count=0):
-    px = 0.001*np.array([-350., -150., 10.])
-    py = 0.001*np.array([-140., 40.])
-    pz = 0.001*np.array([-20., 5.])
-    vx = 0.001*np.array([0.1, 0.5])
-    vy = 0.001*np.array([-0.2, -0.8])
-    vz = 0.001*np.array([0.3])
-    altitudes = np.array([670., 35786.])
-    r = altitudes + 6378.
-    mu = 398600.5  # Gravitational constant
-    mean_motions = np.sqrt(mu / r ** 3)  # n in the derivations
-    omx = [1, 0.5, 0.1]
-    omy = [0.8, 0.3]
-    omz = [0.6, -0.2]
-    angle_0 = [0, 45, 90]
+def get_initial_conditions(conditions_count=100):
+    starts_dict = []
+    mu = 398600.5
+    i = 0
+    dt = 0.05
+    while i<conditions_count:
+        # Position (in km)
+        px = np.random.uniform(-0.35, 0.35)
+        py = np.random.uniform(-0.35, 0.35)
+        pz = np.random.uniform(-0.35, 0.35)
+        
+        # Velocity (in km/s)
+        vx = np.random.uniform(-0.001, 0.001)
+        vy = np.random.uniform(-0.001, 0.001)
+        vz = np.random.uniform(-0.001, 0.001)
+        
+        # Initial angle (in degrees)
+        angle_0 = np.random.uniform(0, 360)
+        
+        # Angular velocity (in rad/s)
+        omx = np.random.uniform(-1.0, 1.0)
+        omy = np.random.uniform(-1.0, 1.0)
+        omz = np.random.uniform(-1.0, 1.0)
+        
+        # Altitude (in km)
+        altitude = np.random.uniform(670, 35786)
+        r = altitude + 6378.  # Earth radius added
+        mean_motion = np.sqrt(mu / r**3)
+        r0 = np.array([px, py, pz])
+        rdot0 = np.array([vx, vy, vz])
     
-    starts = list(itertools.product(px, py, pz, vx, vy, vz, angle_0, omx, omy, omz, mean_motions))
-    
-    starts_dict = [
-        {
-            'px': s[0], 'py': s[1], 'pz': s[2],
-            'vx': s[3], 'vy': s[4], 'vz': s[5],
-            'angle_0': s[6],
-            'omx': s[7], 'omy': s[8], 'omz': s[9],
-            'mean_motion': s[10],
-            'nframes': 4000  # default value
-        } for s in starts
-    ]
-    
-    # Modify specific conditions to have higher nframes
-    if len(starts_dict) >= 2:
-        starts_dict[0]['nframes'] = 5000  # First condition with 5000 frames
-        starts_dict[1]['nframes'] = 10000  # Second condition with 10000 frames
-    
-    if conditions_count == 0:
-        return starts_dict
-    else:
-        return starts_dict[:conditions_count]
+        if i==0:
+            nframes = 5000
+        elif i==1:
+            nframes = 10000
+        else:
+            nframes = 4000
+
+        _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion)
+        if max(d) > 500:
+            # too far, avoid appending this result
+            continue
+
+        starts_dict.append({
+            'px': px, 'py': py, 'pz': pz,
+            'vx': vx, 'vy': vy, 'vz': vz,
+            'angle_0': angle_0,
+            'omx': omx, 'omy': omy, 'omz': omz,
+            'mean_motion': mean_motion,
+            'nframes': nframes  # Randomly choose one of these values
+        })
+        i += 1
+    return starts_dict
 
 def run_single_simulation(rank, sim_parameters):
     r0 = np.array([sim_parameters['px'], sim_parameters['py'], sim_parameters['pz']])
@@ -120,9 +133,6 @@ def run_single_simulation(rank, sim_parameters):
     x, y, z, vx, vy, vz, d, v = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion)
     debris_pos = np.vstack([x,y,z]).T
     debris_vel = np.vstack([vx,vy,vz]).T
-    if max(d) > 500:
-        # too far, avoid simulation
-        return
 
     # LiDAR point cloud generation initializations
     ang_res = 0.025  # angular resolution of Aeries 2 LiDAR
