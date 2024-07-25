@@ -174,9 +174,9 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-
+    num_tests = 100
     try:
-        initial_conditions_list = list(get_initial_conditions(100))
+        initial_conditions_list = list(get_initial_conditions(num_tests))
         total_conditions = len(initial_conditions_list)
 
         # Distribute work among processes
