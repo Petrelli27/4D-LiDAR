@@ -115,7 +115,7 @@ def get_initial_conditions(conditions_count=100):
         i += 1
     return starts_dict
 
-def run_single_simulation(rank, sim_parameters):
+def run_single_simulation(rank, sim_parameters, sim_index):
     r0 = np.array([sim_parameters['px'], sim_parameters['py'], sim_parameters['pz']])
     rdot0 = np.array([sim_parameters['vx'], sim_parameters['vy'], sim_parameters['vz']])
     omega_L = np.array([sim_parameters['omx'], sim_parameters['omy'], sim_parameters['omz']])
@@ -159,7 +159,14 @@ def run_single_simulation(rank, sim_parameters):
         'Rot_L_to_B': Rot_L_to_Bs, 'omega_L': omega_L, 'dt': dt, 'angle_0': angle_0
     }
 
-    return simulation_data
+    # Save the simulation data immediately
+    os.makedirs('results', exist_ok=True)
+    with open(f'results/sim_kompsat_trimesh_test_{sim_index}.pickle', 'wb') as sim_data:
+        pickle.dump(simulation_data, sim_data)
+
+    print(f"Process {rank} completed and saved simulation {sim_index}")
+
+    return sim_index  # Return just the index instead of the full data
  
 
 if __name__ == '__main__':
@@ -176,20 +183,18 @@ if __name__ == '__main__':
         local_results = []
         for i in range(rank, total_conditions, size):
             conditions = initial_conditions_list[i]
-            result = run_single_simulation(rank, conditions)
-            if result is not None:
-                local_results.append(result)
+            sim_index = run_single_simulation(rank, conditions, i)
+            if sim_index is not None:
+                local_results.append(sim_index)
 
         # Gather all results to process 0
-        all_results = comm.gather(local_results, root=0)
+        all_completed = comm.gather(local_results, root=0)
 
         # Process 0 saves all results
         if rank == 0:
-            os.makedirs('results', exist_ok=True)
-            flat_results = [item for sublist in all_results for item in sublist]
-            for i, simulation_data in enumerate(flat_results):
-                with open(f'results/sim_kompsat_trimesh_test_{i}.pickle', 'wb') as sim_data:
-                    pickle.dump(simulation_data, sim_data)
+            flat_completed = [item for sublist in all_completed for item in sublist]
+            print(f"Total completed simulations: {len(flat_completed)}")
+            print("Completed simulation indices:", flat_completed)
 
     except Exception as e:
         print(f"Error on process {rank}: {str(e)}")
