@@ -160,33 +160,24 @@ if __name__ == '__main__':
 
     try:
         initial_conditions_list = list(get_initial_conditions(100))
-        
-        # Distribute work among processes
-        local_conditions = np.array_split(initial_conditions_list, size)[rank]
+        total_conditions = len(initial_conditions_list)
 
-        # Run simulations on this process
+        # Distribute work among processes
         local_results = []
-        for conditions in local_conditions:
+        for i in range(rank, total_conditions, size):
+            conditions = initial_conditions_list[i]
             result = run_single_simulation(rank, conditions)
             if result is not None:
                 local_results.append(result)
 
-        # Save results from this process
-        os.makedirs('results', exist_ok=True)
-        with open(f'results/sim_kompsat_trimesh_test_rank_{rank}.pickle', 'wb') as sim_data:
-            pickle.dump(local_results, sim_data)
+        # Gather all results to process 0
+        all_results = comm.gather(local_results, root=0)
 
-        # Synchronize processes
-        comm.Barrier()
-
-        # Process 0 combines results
+        # Process 0 saves all results
         if rank == 0:
-            all_results = []
-            for i in range(size):
-                with open(f'results/sim_kompsat_trimesh_test_rank_{i}.pickle', 'rb') as sim_data:
-                    all_results.extend(pickle.load(sim_data))
-            
-            for i, simulation_data in enumerate(all_results):
+            os.makedirs('results', exist_ok=True)
+            flat_results = [item for sublist in all_results for item in sublist]
+            for i, simulation_data in enumerate(flat_results):
                 with open(f'results/sim_kompsat_trimesh_test_{i}.pickle', 'wb') as sim_data:
                     pickle.dump(simulation_data, sim_data)
 
