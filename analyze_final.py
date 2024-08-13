@@ -461,8 +461,8 @@ true_pca = 0
 for i in range(nframes):
 
     print(i)
-    visualize_flag = (i>70*20 and i<80*20)
-    # visualize_flag = False
+    # visualize_flag = (i>70*20 and i<80*20)
+    visualize_flag = False
 
     # if i > 200:
     #     tolerance = 1e-1
@@ -1101,6 +1101,8 @@ for i in range(nframes):
         associatedBbox = associatedBbox_2.copy()
         adapt = False
     else: # use prediction
+        z_p_k = z_p_k_1.copy()
+        z_pi_k = z_pi_k_1.copy()
         adapt = True
     ideal_measurements[i] = use_measurement
         ######################################
