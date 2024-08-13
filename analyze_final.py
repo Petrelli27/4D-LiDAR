@@ -7,6 +7,7 @@ from estimateOmega import estimate_LLS, estimate_kabsch, estimate_rotation_B
 from associationdata import rotation_association
 import pickle
 import scipy
+import random
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
@@ -244,7 +245,7 @@ def orientationupdate(dt, x_k):
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
     Rot_0 = quat2rotm(q_ini)
-    Rot_0 = np.eye(3)
+    # Rot_0 = np.eye(3)
     # print(Rot_0)
     q_s = []
     for i in range(len(debris_pos)):
@@ -268,22 +269,27 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 O_B = np.array([0, 0, 0])
 O_L = np.array([0, 0, 0])
 
-with open('sim_kompsat_trimesh_test.pickle', 'rb') as sim_data:
+random.seed(42)
+np.random.seed(42)
+
+with open('sim_kompsat_trimesh_test_69.pickle', 'rb') as sim_data:
     # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
     # with open('sim_new_conditions.pickle', 'rb') as sim_data:
     data = pickle.load(sim_data)
-XBs = data[0]
-YBs = data[1]
-ZBs = data[2]
-PBs = data[3]
-VBs = data[4]
 
-debris_pos = data[5]
-debris_vel = data[6]
-Rot_L_to_B = data[7]
+XBs = data["XBs"]
+YBs = data["YBs"]
+ZBs = data["ZBs"]
+PBs = data["PBs"]
+VBs = data["VBs"]
+
+debris_pos = data["debris_pos"]
+debris_vel = data["debris_vel"]
+Rot_L_to_B = data["Rot_L_to_B"]
 Rot_B_to_L = [np.transpose(r) for r in Rot_L_to_B]
-omega_L = data[8]
-dt = data[9]
+omega_L = data["omega_L"]
+dt = data["dt"]
+angle_0 = data["angle_0"]
 
 # Estimation Loop
 XLs = []  # store point cloud x in L
@@ -296,18 +302,18 @@ z_s = []  # store measurements over time
 P_s = []  # store covariances in time
 errors = [0]
 nframes = len(VBs)
-
+ideal_measurements = np.zeros((nframes, 1))
+points = [len(XBs[i]) for i in range(nframes)]
 # Running the simulation - Initializations
 
 # Initializations in L Frame
 vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
 omega_0 = [-1, 0, 1.]
 # omega_true = np.array([0.01, -0.02, -0.05])
-omega_true = np.array([0.8, 1.0, -0.2])
-omega_true = omega_true = np.array([0.00, -0.0, 1e-8])
-q_ini = [1., 0., 0., 0.]
+omega_true = omega_L
+q_ini = [0.87323411,  0.37596083,  0.30076866, -0.07519217]
 # q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
-q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues(omega_L, np.deg2rad(45)))))
+q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues(omega_L, np.deg2rad(angle_0)))))
 q_true_alt = -q_true
 
 p_0 = np.array([-180., -320., -10.])
@@ -455,8 +461,8 @@ true_pca = 0
 for i in range(nframes):
 
     print(i)
-    # visualize_flag = i>33*20 and i%5==0
-    visualize_flag = False
+    visualize_flag = (i>70*20 and i<80*20)
+    # visualize_flag = False
 
     # if i > 200:
     #     tolerance = 1e-1
@@ -570,7 +576,10 @@ for i in range(nframes):
     z_pi_k_1, z_p_k_1, R_1 = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
     if i == 0:
         q_kp1 = q_ini
-    z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
+    try:
+        z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
+    except:
+        print("bad ransac")
 
     ############
     # bias removal
@@ -654,10 +663,7 @@ for i in range(nframes):
     z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
     if i == 0:
-        associatedBbox = associatedBbox_1.copy()
-        z_p1_k = associatedBbox_1[:, 0]
-        z_q_k_1_previous = z_q_k_1.copy()
-        z_q_k_2_previous = z_q_k_2.copy()
+        use_measurement = 1
 
     if i > 0:
         ###########################################################################3
@@ -673,24 +679,30 @@ for i in range(nframes):
         ran_pred_thresh = 20
         pca_pred_thresh = 20
         ran_pca_thresh = 25
-        pca_prev_thresh = 1
-        ran_prev_thresh = 1
+        pca_prev_thresh = 3*dt*np.rad2deg(np.linalg.norm(omega_kp1))
+        ran_prev_thresh = 3*dt*np.rad2deg(np.linalg.norm(omega_kp1))
         # pred_prev_diff = 15
 
         if pca_true_diff < 20 or ransac_true_diff < 20:
             if pca_true_diff > ransac_true_diff:
                 true_ran += 1
+                use_measurement = 1
             else:
                 true_pca += 1
+                use_measurement = 2
         elif pca_true_diff < ransac_true_diff and pca_true_diff < pred_true_diff:
             true_pca += 1
+            use_measurement = 1
         elif ransac_true_diff < pca_true_diff and ransac_true_diff < pred_true_diff:
             true_ran += 1
+            use_measurement = 2
         else:
             true_pred += 1
+            use_measurement = 3
 
 
         # super metric
+    """
     if i > settling_time + 40:
         if ransac_pred_diff > ran_pred_thresh:
             if pca_pred_diff > pca_pred_thresh:
@@ -1062,33 +1074,35 @@ for i in range(nframes):
                             print("using ransac 8")
                             pca12 += 1
                             ransac += 1
+    """
+    # if i == 0:
+    #     use_measurement = 1
+    #     print("using pca 14")
+    # else:
+    #     if ransac_pred_diff > pca_pred_diff:
+    #         use_measurement = 1
+    #         print("using pca 13")
+    #     else:
+    #         use_measurement = 2
+    #         print("using ransac 9")
 
-    elif i == 0:
+    if use_measurement == 1: # use pca
         z_q_k = z_q_k_1.copy()
         z_pi_k = z_pi_k_1.copy()
         z_p_k = z_p_k_1.copy()
         z_p1_k = associatedBbox_1[:, 0]
         associatedBbox = associatedBbox_1.copy()
         adapt = False
-        print("using pca 14")
-    else:
-        if ransac_pred_diff > pca_pred_diff:
-            z_q_k = z_q_k_1.copy()
-            z_pi_k = z_pi_k_1.copy()
-            z_p_k = z_p_k_1.copy()
-            z_p1_k = associatedBbox_1[:, 0]
-            associatedBbox = associatedBbox_1.copy()
-            adapt = False
-            print("using pca 13")
-        else:
-            z_q_k = z_q_k_2.copy()
-            z_pi_k = z_pi_k_2.copy()
-            z_p_k = z_p_k_2.copy()
-            z_p1_k = associatedBbox_2[:, 0]
-            associatedBbox = associatedBbox_2.copy()
-            adapt = False
-            print("using ransac 9")
-
+    elif use_measurement == 2: # use ransac
+        z_q_k = z_q_k_2.copy()
+        z_pi_k = z_pi_k_2.copy()
+        z_p_k = z_p_k_1.copy()
+        z_p1_k = associatedBbox_2[:, 0]
+        associatedBbox = associatedBbox_2.copy()
+        adapt = False
+    else: # use prediction
+        adapt = True
+    ideal_measurements[i] = use_measurement
         ######################################
 
     without_correction.append(z_p_k)
@@ -1122,7 +1136,7 @@ for i in range(nframes):
         ax.set_ylabel('y (m)')
         ax.set_zlabel('z (m)')
         ax.title.set_text(
-            f'Time={i * dt}s' + '\n' + f'Pred. Length={round(L, 2)}m ' + f'Width={round(W, 2)}m ' + f'Height={round(D, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
+            f'Time={i * dt}s' + '\n' + f'Pred. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
         # width = orange to green, blue to green
         # length = orange to cyan, blue to cyan
         # height = orange to magenta, blue to magenta
@@ -1819,6 +1833,17 @@ plt.legend()
 plt.title('Filtered Box Dimensions')
 plt.xlabel('Time (s)')
 plt.ylabel('Size (m)')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), ideal_measurements, '.')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.title('1:PCA, 2:RANSAC, 3:Prediction')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), points)
+plt.xlabel('Time (s)')
+plt.ylabel('LiDAR Points')
 """
 fig = plt.figure()
 true_b = []
