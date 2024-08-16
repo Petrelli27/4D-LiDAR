@@ -88,8 +88,8 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
     constant = max(sum_of_sinusoids(t, *params))
     # print(constant)
 
-    if True:
-    # if False:
+    # if True:
+    if False:
         # Plot the frequency spectrum
         plt.figure()
         plt.plot(positive_frequencies, positive_magnitudes, label='Frequency spectrum')
@@ -185,6 +185,13 @@ def skew(vector):
                      [vector[2], 0, -vector[0]],
                      [-vector[1], vector[0], 0]])
 
+def rodrigues_axis_angle(axis, angle):
+    axis = axis/np.linalg.norm(axis)  # Unit vector along omega
+    phi = angle
+    ee_t = np.matmul(axis.reshape(len(axis), 1), axis.reshape(1, len(axis)))
+    e_tilde = skew(axis)
+    R = ee_t + (np.eye(len(axis)) - ee_t) * np.cos(phi) + e_tilde * np.sin(phi)
+    return R
 
 def rodrigues(omega, dt):
     e_omega = omega / np.linalg.norm(omega)  # Unit vector along omega
@@ -304,6 +311,7 @@ errors = [0]
 nframes = len(VBs)
 ideal_measurements = np.zeros((nframes, 1))
 points = [len(XBs[i]) for i in range(nframes)]
+depths = [(max(ZBs[i]) - min(ZBs[i])) for i in range(nframes)]
 # Running the simulation - Initializations
 
 # Initializations in L Frame
@@ -311,9 +319,9 @@ vT_0 = [0.1, 0.1, 0.1]  # Initial guess of relative velocity of debris, can be b
 omega_0 = [-1, 0, 1.]
 # omega_true = np.array([0.01, -0.02, -0.05])
 omega_true = omega_L
-q_ini = [0.87323411,  0.37596083,  0.30076866, -0.07519217]
+q_ini = [0.70710678, 0.10425721, 0.31277162, 0.62554324]
 # q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini))
-q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues(omega_L, np.deg2rad(angle_0)))))
+q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(angle_0)))))
 q_true_alt = -q_true
 
 p_0 = np.array([-180., -320., -10.])
@@ -358,7 +366,7 @@ H2[3:6,6:9] = np.eye(3)
 H2[6:, 9:12] = np.eye(3)
 
 # Kabsch estimation parameters
-n_moving_average = 200
+n_moving_average = 100
 settling_time = 200
 # Record keeping for angular velocity estimate
 omegas_kabsch_b = np.zeros((nframes, 3))
@@ -461,7 +469,7 @@ true_pca = 0
 for i in range(nframes):
 
     print(i)
-    # visualize_flag = (i>70*20 and i<80*20)
+    # visualize_flag = (i>200 and i%300==0)
     visualize_flag = False
 
     # if i > 200:
@@ -1103,6 +1111,7 @@ for i in range(nframes):
     else: # use prediction
         z_p_k = z_p_k_1.copy()
         z_pi_k = z_pi_k_1.copy()
+        associatedBbox = predictedBbox.copy()
         adapt = True
     ideal_measurements[i] = use_measurement
         ######################################
@@ -1843,9 +1852,14 @@ plt.xlabel('Time (s)')
 plt.title('1:PCA, 2:RANSAC, 3:Prediction')
 
 fig = plt.figure()
-plt.plot(np.arange(0, dt * nframes, dt), points)
+plt.plot(np.arange(0, dt * nframes, dt), points, 'r.')
 plt.xlabel('Time (s)')
 plt.ylabel('LiDAR Points')
+
+fig = plt.figure()
+plt.plot(np.arange(0, dt * nframes, dt), depths)
+plt.xlabel('Time (s)')
+plt.ylabel('Depth of point cloud (m)')
 """
 fig = plt.figure()
 true_b = []
