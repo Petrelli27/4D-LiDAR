@@ -529,7 +529,7 @@ def run(pickle_file, configs, logger):
         Z_i = ZLs[i]
         
         num_points = len(Z_i)
-        logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
+        #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
 
         # Return bounding box and centroid estimate of bounding box
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
@@ -672,7 +672,7 @@ def run(pickle_file, configs, logger):
                 short_metric_choice = "pred 4"
             elif (not RP) and CP and RC:
                 use_measurement = 1  # pca
-                short_metric_choice = "ransac 5"
+                short_metric_choice = "pca 5"
             elif RP and (not CP) and RC:
                 use_measurement = 2
                 short_metric_choice = "ransac 6"
@@ -1004,7 +1004,7 @@ def run(pickle_file, configs, logger):
     # box assigment experiment
     #####
     assignment_results = pd.DataFrame(metric_boxes)
-    assignment_results.to_csv('assignment_results' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
+    assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ##############
     # Plot relevant figures

@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-pickle_directory_name: 'results2files'           # the directory where all the pickle files are stored
+pickle_directory_name: 'results_1000'           # the directory where all the pickle files are stored
 
                                                 # the various columns in the final csv to be saved, description:
                                                 # true_xxx: number of times xxx should have been chosen
@@ -13,10 +13,8 @@ pickle_directory_name: 'results2files'           # the directory where all the p
 results_column_names: ['rmse_px', 'rmse_py', 'rmse_pz', 'rmse_omx', 'rmse_omy', 'rmse_omz', 'rmse_vdx', 'rmse_vdy', 'rmse_vdz', 'rmse_x_before', 'rmse_y_before', 'rmse_z_before', 'rmse_x_after', 'rmse_y_after', 'rmse_z_after', 'rmse_q']
 master_file_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 top_level_dir: ''                       # the folder where csv will be saved and where code is
-results_file_name: 'monte_carlo_results_true_metric.csv'    # name of file containing all results
-assignment_results_file_name: 'assignment_results'      # for the assigment exercise in analyze_parallel.py
-machine_learning_data_file_path: 'combined_output.csv'
-machine_learning_data_columns: ['file_name','ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'number_of_planes', 'eig_x', 'eig_y', 'eig_z']
+results_file_name: 'monte_carlo_results_results_1000.csv'    # name of file containing all results
+assignment_results_file_name: 'assignment_results_1000'      # for the assigment exercise in analyze_parallel.py
 options: ''                                     # specifying 'p' will enable printing of some messages to console
 
 
