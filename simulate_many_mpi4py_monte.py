@@ -5,6 +5,8 @@ import lidarScan3
 import trimesh
 import pickle
 import os
+import mpi4py.rc
+mpi4py.rc.threads = False
 from mpi4py import MPI
 
 # some utility functions
@@ -174,7 +176,7 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    num_tests = 100
+    num_tests = 1000
     try:
         initial_conditions_list = list(get_initial_conditions(num_tests))
         total_conditions = len(initial_conditions_list)

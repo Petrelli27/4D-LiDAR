@@ -672,7 +672,7 @@ def run(pickle_file, configs, logger):
                 short_metric_choice = "pred 4"
             elif (not RP) and CP and RC:
                 use_measurement = 1  # pca
-                short_metric_choice = "pca 5"
+                short_metric_choice = "ransac 5"
             elif RP and (not CP) and RC:
                 use_measurement = 2
                 short_metric_choice = "ransac 6"
