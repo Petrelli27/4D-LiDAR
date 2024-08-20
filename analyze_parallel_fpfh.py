@@ -392,6 +392,7 @@ def run(pickle_file, configs, logger):
     ransac_errors = []
     pca_errors = []
     prediction_errors = []
+    fpfh_errors = []
     perfect_metric_choices = []
     short_metric_choices = []
     number_of_pointss = []
@@ -641,7 +642,7 @@ def run(pickle_file, configs, logger):
                 ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
                 ransac_true_diff = np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))
             else:
-                nonsense_value = 1000
+                nonsense_value = 256
                 ransac_pred_diff = nonsense_value
                 ransac_pca_diff = nonsense_value
                 ransac_prev_diff = nonsense_value
@@ -649,6 +650,10 @@ def run(pickle_file, configs, logger):
             if RC_good:
                 fpfh_true_diff = np.rad2deg(quat_angle_diff(z_q_k_3, q_true[i, :]))
                 fpfh_pred_diff = np.rad2deg(quat_angle_diff(z_q_k_3, q_kp1))
+            else:
+                nonsense_value = 256
+                fpfh_true_diff = nonsense_value
+                fpfh_pred_diff = nonsense_value
 
             pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
             pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
@@ -676,31 +681,31 @@ def run(pickle_file, configs, logger):
                 short_metric_choice = "fpfh 9"
             if RC:
                 RC_good = True # sets flag
-                good_prev_cloud, good_prev_fpfh = boundingbox.xyz_to_o3d_cloud(X_i, Y_i, Z_i, return_fpfh=True)
+                good_prev_cloud, good_prev_fpfh = boundingbox.xyz_to_o3d_voxel_cloud(X_i, Y_i, Z_i, return_fpfh=True)
                 good_prev_pos = z_p_k.copy() # from previous iteration
                 good_prev_q = z_q_k.copy() # from previous iteration
-            if RP and CP and (not RC):
+            if (not RC_good) and RP and CP and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 1"
-            elif RP and (not CP) and (not RC):
+            elif (not RC_good) and RP and (not CP) and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 2"
-            elif (not RP) and CP and (not RC):
+            elif (not RC_good) and (not RP) and CP and (not RC):
                 use_measurement = 1  # pca
                 short_metric_choice = "pca 3"
-            elif (not RP) and (not CP) and (not RC):
+            elif (not RC_good) and (not RP) and (not CP) and (not RC):
                 use_measurement = 3
                 short_metric_choice = "pred 4"
-            elif (not RP) and CP and RC:
+            elif (not RC_good) and (not RP) and CP and RC:
                 use_measurement = 1  # pca
                 short_metric_choice = "pca 5"
-            elif RP and (not CP) and RC:
+            elif (not RC_good) and RP and (not CP) and RC:
                 use_measurement = 2
                 short_metric_choice = "ransac 6"
-            elif (not RP) and (not CP) and (RC):
+            elif (not RC_good) and (not RP) and (not CP) and (RC):
                 use_measurement = 2
                 short_metric_choice = "ransac 7"
-            elif (RP and CP and RC):
+            elif (not RC_good) and (RP and CP and RC):
                 use_measurement = 2
                 short_metric_choice = "ransac 8"
         else:  # at the start, don't use prediction
@@ -710,7 +715,7 @@ def run(pickle_file, configs, logger):
             else:
                 use_measurement = 2
                 short_metric_choice = "ransac 0"
-        metric_boxes[short_metric_choice][0] += 1
+        metric_boxes[short_metric_choice][0] += 1 # counts the total
         short_metric_choices.append(short_metric_choice)
 
         if i == 0:
@@ -978,10 +983,12 @@ def run(pickle_file, configs, logger):
             ransac_errors.append(0)
             pca_errors.append(0)
             prediction_errors.append(0)
+            fpfh_errors.append(0)
         else:
             ransac_errors.append(ransac_true_diff)
             pca_errors.append(pca_true_diff)
             prediction_errors.append(pred_true_diff)
+            fpfh_errors.append(fpfh_true_diff)
         number_of_pointss.append(num_points)
         if i == 0:
             points_diffs.append(0)
@@ -1016,6 +1023,7 @@ def run(pickle_file, configs, logger):
     master_file['ransac_error'] = ransac_errors
     master_file['pca_error'] = pca_errors
     master_file['prediction_error'] = prediction_errors
+    master_file['fpfh_error'] = fpfh_errors
     master_file['perfect_metric_choice'] = perfect_metric_choices
     master_file['short_metric_choice'] = short_metric_choices
     master_file['number_of_points'] = number_of_pointss
