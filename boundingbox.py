@@ -331,7 +331,7 @@ def bbox3d_fpfh(X, Y, Z, prev_cloud, prev_fpfh, prev_pos, prev_q, visualize=Fals
 
     radius_feature = 2.0*radius_normal
     distance_threshold = 0.5*radius_normal
-    current_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+    current_fpfh = o3d.pipelines.registration.compute_fpfh_feature(current_pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(prev_cloud, current_pcd, prev_fpfh, current_fpfh, o3d.pipelines.registration.FastGlobalRegistrationOption(maximum_correspondence_distance=distance_threshold))
     
     R_prev_to_cur = result.transformation[0:3][0:3] # rotation from prev to current cloud
