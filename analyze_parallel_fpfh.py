@@ -408,16 +408,17 @@ def run(pickle_file, configs, logger):
     pca_pred_diffs = []
     ransac_pred_diffs = []
 
-    metric_boxes = {"pca 0": [0, 0, 0, 0, 0],
-               "ransac 0": [0, 0, 0, 0, 0],
-               "ransac 1": [0, 0, 0, 0, 0],
-               "ransac 2": [0, 0, 0, 0, 0],
-               "pca 3": [0, 0, 0, 0, 0],
-               "pred 4": [0, 0, 0, 0, 0],
-               "pca 5": [0, 0, 0, 0, 0],
-               "ransac 6": [0, 0, 0, 0, 0],
-               "ransac 7": [0, 0, 0, 0, 0],
-               "ransac 8": [0, 0, 0, 0, 0]}
+    metric_boxes = {"pca 0": [0, 0, 0, 0, 0, 0],
+               "ransac 0": [0, 0, 0, 0, 0, 0],
+               "ransac 1": [0, 0, 0, 0, 0, 0],
+               "ransac 2": [0, 0, 0, 0, 0, 0],
+               "pca 3": [0, 0, 0, 0, 0, 0],
+               "pred 4": [0, 0, 0, 0, 0, 0],
+               "pca 5": [0, 0, 0, 0, 0, 0],
+               "ransac 6": [0, 0, 0, 0, 0, 0],
+               "ransac 7": [0, 0, 0, 0, 0, 0],
+               "ransac 8": [0, 0, 0, 0, 0, 0],
+               "fpfh 9": [0, 0, 0, 0, 0, 0]}
 
     for i in range(nframes):
 
@@ -540,7 +541,7 @@ def run(pickle_file, configs, logger):
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
         if RC_good and RC: # don't worry if RC doesn't exist yet, RC_good short-circuits it
-            z_pi_k_3, z_p_k_3, R_1_3 = boundingbox.bbox3d_fpfh(X_i, Y_i, Z_i, good_prev_cloud, good_prev_q)
+            z_pi_k_3, z_p_k_3, R_1_3 = boundingbox.bbox3d_fpfh(X_i, Y_i, Z_i, good_prev_cloud, good_prev_fpfh, good_prev_pos, good_prev_q)
         if R_1_2.size == 0:
             ransac_error = True
         else:
@@ -599,6 +600,8 @@ def run(pickle_file, configs, logger):
             z_q_k_1, _, error = rotation_association(q_kp1, R_1)
             if not ransac_error:
                 z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
+            if RC_good:
+                z_q_k_3 = rotm2quat(R_1_3) # don't need association for fpfh, because it is already accounted for
             if quat_angle_diff(z_q_k_1, q_true[i, :]) > np.deg2rad(35):
                 perfect_metric = True
             else:
@@ -619,6 +622,9 @@ def run(pickle_file, configs, logger):
         if not ransac_error:
             associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
             z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+        if RC_good:
+            associatedBbox_3, Lm_3, Wm_3, Dm_3 = boundingbox.associated(z_q_k_3, z_pi_k_3, z_p_k_3, R_1_3)
+            z_p1_k_3 = associatedBbox_3[:,0]
 
         if i == 0:
             associatedBbox = associatedBbox_1.copy()
@@ -640,12 +646,15 @@ def run(pickle_file, configs, logger):
                 ransac_pca_diff = nonsense_value
                 ransac_prev_diff = nonsense_value
                 ransac_true_diff = nonsense_value
-
+            if RC_good:
+                fpfh_true_diff = np.rad2deg(quat_angle_diff(z_q_k_3, q_true[i, :]))
+                fpfh_pred_diff = np.rad2deg(quat_angle_diff(z_q_k_3, q_kp1))
 
             pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
             pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
             pca_true_diff = np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))
             pred_true_diff = np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))
+            
             # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
             short_metric_thresh = configs['short_metric_thresh']
 
@@ -662,8 +671,14 @@ def run(pickle_file, configs, logger):
             RP = ransac_pred_diff < short_metric_thresh
             CP = pca_pred_diff < short_metric_thresh
             RC = ransac_pca_diff < short_metric_thresh
-            if (not RC_good) and RC:
-                RC_good = True # set the flag so that 
+            if RC_good:
+                use_measurement = 4
+                short_metric_choice = "fpfh 9"
+            if RC:
+                RC_good = True # sets flag
+                good_prev_cloud, good_prev_fpfh = boundingbox.xyz_to_o3d_cloud(X_i, Y_i, Z_i, return_fpfh=True)
+                good_prev_pos = z_p_k.copy() # from previous iteration
+                good_prev_q = z_q_k.copy() # from previous iteration
             if RP and CP and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 1"
@@ -702,26 +717,30 @@ def run(pickle_file, configs, logger):
             ideal_measurement = 2
             perfect_metric_choice = 'first'
         else:
+            if pca_true_diff < configs['true_orientation_difference']:
+                metric_boxes[short_metric_choice][1] += 1
+            if ransac_true_diff < configs['true_orientation_difference']:
+                metric_boxes[short_metric_choice][2] += 1
+            if pred_true_diff < configs['true_orientation_difference']:
+                metric_boxes[short_metric_choice][3] += 1
+            if fpfh_true_diff < configs['true_orientation_difference']:
+                metric_boxes[short_metric_choice][5] += 1
             if ransac_true_diff < configs['true_orientation_difference']:
                 ideal_measurement = 2
                 perfect_metric_choice = "ransac"
-                metric_boxes[short_metric_choice][2] += 1
             else:
                 if pca_true_diff < configs['true_orientation_difference']:
                     ideal_measurement = 1
                     perfect_metric_choice = "pca"
-                    metric_boxes[short_metric_choice][1] += 1
                 else:
                     if pred_true_diff < configs['true_orientation_difference']:
                         ideal_measurement= 3
                         perfect_metric_choice = "pred"
-                        metric_boxes[short_metric_choice][3] += 1
                     else:
-                        values = [pca_true_diff, ransac_true_diff, pred_true_diff]
+                        values = [pca_true_diff, ransac_true_diff, pred_true_diff, fpfh_true_diff]
                         min_index, min_value = min(enumerate(values), key=lambda x: x[1])
                         ideal_measurement = min_index + 1  # we want from 1 to 3
                         perfect_metric_choice = "all wrong"
-                        metric_boxes[short_metric_choice][4] += 1
         perfect_metric_choices.append(perfect_metric_choice)
 
         if configs['use_perfect_metric']:
@@ -744,13 +763,22 @@ def run(pickle_file, configs, logger):
             associatedBbox = associatedBbox_1.copy()
             adapt = False
             choice = 'pca'
-        else:
+        elif use_measurement == 3:
             # use prediction
             associatedBbox = predictedBbox.copy()
             z_p_k = z_p_k_1.copy()
             z_p1_k = associatedBbox[:, 0]
             adapt = True
             choice = 'prediction'
+        elif use_measurement == 4:
+            # use fpfh
+            z_q_k = z_q_k_3.copy()
+            z_pi_k = z_pi_k_3.copy()
+            z_p_k = z_p_k_3.copy()
+            z_p1_k = associatedBbox_3[:, 0]
+            associatedBbox = associatedBbox_3.copy()
+            adapt = False
+            choice = 'fpfh'
 
                 ######################################
 
