@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
     try:
         initial_conditions_list = list(get_initial_conditions(100))
-        
+        print("Got Initial Conditions")
         # Distribute work among processes
         local_conditions = np.array_split(initial_conditions_list, size)[rank]
 

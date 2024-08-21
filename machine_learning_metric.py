@@ -38,87 +38,83 @@ import numpy as np
 import yaml
 
 
-
-
 @staticmethod
 def preprocessing_main(X, y):
     random_state = 42
     train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.20, stratify=y,
                                                         random_state=random_state)
 
-    classes = set(train_y)
-    indices = [np.where(train_y == class_i) for i, class_i in enumerate(classes)]
-    num_in_class = [len(indices_i[0]) for j, indices_i in enumerate(indices)]
-    data_Xy = np.hstack((train_X, np.array([train_y]).T))
-    data_classes = []
-    for j, value in enumerate(classes):
-        data_class_i = data_Xy[indices[j], :].reshape((num_in_class[j], len(data_Xy[0])))
-        data_classes.append(data_class_i)
-    augmented_data_Xy = data_Xy.copy()
-
+    # classes = set(train_y)
+    # indices = [np.where(train_y == class_i) for i, class_i in enumerate(classes)]
+    # num_in_class = [len(indices_i[0]) for j, indices_i in enumerate(indices)]
+    # data_Xy = np.hstack((train_X, np.array([train_y]).T))
+    # data_classes = []
+    # for j, value in enumerate(classes):
+    #     data_class_i = data_Xy[indices[j], :].reshape((num_in_class[j], len(data_Xy[0])))
+    #     data_classes.append(data_class_i)
+    # augmented_data_Xy = data_Xy.copy()
+    #
     # oversampling
-    max_samples = max(num_in_class)
-    for i, val in enumerate(num_in_class):
-        if val == max_samples:  # you do not need to augment this class because it is already the largest
-            pass
-        else:
-            ratio = int(max_samples / val)
-            for j in range(ratio - 1):
-                augmented_data_Xy = np.vstack((augmented_data_Xy, data_classes[i]))
-
+    # max_samples = max(num_in_class)
+    # for i, val in enumerate(num_in_class):
+    #     if val == max_samples:  # you do not need to augment this class because it is already the largest
+    #         pass
+    #     else:
+    #         ratio = int(max_samples / val)
+    #         for j in range(ratio - 1):
+    #             augmented_data_Xy = np.vstack((augmented_data_Xy, data_classes[i]))
+    #
     # undersampling
-    min_samples = min(num_in_class)
-    undersampled_data_Xy = data_Xy[0, :]
-    for i, val in enumerate(num_in_class):
-        undersampled_data_Xy = np.vstack((undersampled_data_Xy, data_classes[i][:min_samples, :]))
-
-    np.random.shuffle(augmented_data_Xy)
-    np.random.shuffle(undersampled_data_Xy)
+    # min_samples = min(num_in_class)
+    # undersampled_data_Xy = data_Xy[0, :]
+    # for i, val in enumerate(num_in_class):
+    #     undersampled_data_Xy = np.vstack((undersampled_data_Xy, data_classes[i][:min_samples, :]))
+    #
+    # np.random.shuffle(augmented_data_Xy)
+    # np.random.shuffle(undersampled_data_Xy)
 
     # Under and over sampled
-    over_train_X = augmented_data_Xy[:, :-1]
-    over_train_y = augmented_data_Xy[:, -1].ravel()
-    under_train_X = undersampled_data_Xy[:, :-1]
-    under_train_y = undersampled_data_Xy[:, -1].ravel()
-
-    indices_new = [np.where(over_train_y == class_i) for i, class_i in enumerate(classes)]
-    num_in_class_new = [len(indices_i[0]) for j, indices_i in enumerate(indices_new)]
-
-    indices_new_under = [np.where(under_train_y == class_i) for i, class_i in enumerate(classes)]
-    num_in_class_new_under = [len(indices_i[0]) for j, indices_i in enumerate(indices_new_under)]
-
-    print('Orignal class Distribution: ' + str(num_in_class))
-    print('Oversampled class distribution: ' + str(num_in_class_new))
-    print('Undersampled class distribution: ' + str(num_in_class_new_under) + '\n')
-
+    # over_train_X = augmented_data_Xy[:, :-1]
+    # over_train_y = augmented_data_Xy[:, -1].ravel()
+    # under_train_X = undersampled_data_Xy[:, :-1]
+    # under_train_y = undersampled_data_Xy[:, -1].ravel()
+    #
+    # indices_new = [np.where(over_train_y == class_i) for i, class_i in enumerate(classes)]
+    # num_in_class_new = [len(indices_i[0]) for j, indices_i in enumerate(indices_new)]
+    #
+    # indices_new_under = [np.where(under_train_y == class_i) for i, class_i in enumerate(classes)]
+    # num_in_class_new_under = [len(indices_i[0]) for j, indices_i in enumerate(indices_new_under)]
+    #
+    # print('Orignal class Distribution: ' + str(num_in_class))
+    # print('Oversampled class distribution: ' + str(num_in_class_new))
+    # print('Undersampled class distribution: ' + str(num_in_class_new_under) + '\n')
+    #
     # Quantile transform
-    quantile_transformer = preprocessing.QuantileTransformer(output_distribution='normal', random_state=0)
-    quantile_train_X = quantile_transformer.fit_transform(train_X)
-    quantile_test_X = quantile_transformer.fit_transform(test_X)
-    quantile_train_oversampled_X = quantile_transformer.fit_transform(over_train_X)
+    # quantile_transformer = preprocessing.QuantileTransformer(output_distribution='normal', random_state=0)
+    # quantile_train_X = quantile_transformer.fit_transform(train_X)
+    # quantile_test_X = quantile_transformer.fit_transform(test_X)
+    # quantile_train_oversampled_X = quantile_transformer.fit_transform(over_train_X)
 
     # Standard scalar
-    scalar_train_X = preprocessing.StandardScaler().fit(train_X)
-    standardscalar_train_X = scalar_train_X.transform(train_X)
-    scalar_test_X = preprocessing.StandardScaler().fit(test_X)
-    standardscalar_test_X = scalar_test_X.transform(test_X)
+    # scalar_train_X = preprocessing.StandardScaler().fit(train_X)
+    # standardscalar_train_X = scalar_train_X.transform(train_X)
+    # scalar_test_X = preprocessing.StandardScaler().fit(test_X)
+    # standardscalar_test_X = scalar_test_X.transform(test_X)
 
     # Normalized
     normalized_train_X = preprocessing.normalize(train_X, norm='l2')
     normalized_test_X = preprocessing.normalize(test_X, norm='l2')
 
-    return [train_X.to_numpy(), train_y.to_numpy(), over_train_X, over_train_y, under_train_X, under_train_y,
-            quantile_train_X,
-            quantile_test_X, standardscalar_train_X, standardscalar_test_X, normalized_train_X, normalized_test_X,
-            test_X.to_numpy(), test_y.to_numpy(), quantile_train_oversampled_X]
+    return [train_X.to_numpy(), train_y.to_numpy(), train_X.to_numpy(), train_y.to_numpy(), train_X.to_numpy(), train_y.to_numpy(),
+            train_X.to_numpy(),
+            test_X.to_numpy(), train_X.to_numpy(), test_X.to_numpy(), normalized_train_X, normalized_test_X,
+            test_X.to_numpy(), test_y.to_numpy(), train_X.to_numpy()]
 
 
 def estimator_tests(configs):
-
     file_path = configs['machine_learning_data_file_path']
     cluster_data_ini = pd.read_csv(file_path, sep=',', header=0,
                                    names=configs['machine_learning_data_columns'])
-
 
     ###############################
     # all options
@@ -140,7 +136,7 @@ def estimator_tests(configs):
               'Histogram Gradient Boosting Classifier', 'Voting Classifier']  # , 'Gaussian Process Classifier']
 
     target_classes = ['Metric Choice']
-    target_labels = ['Metric Choice']
+    target_labels = ['perfect_metric_choice']
 
     data_labels = ['All_Features']
 
@@ -150,7 +146,7 @@ def estimator_tests(configs):
     #####################################
     # desired options
     ####################################
-    classifiers = [MLPClassifier(hidden_layer_sizes=(1000, 500, 300, 75, 50), verbose=True)]
+    classifiers = [MLPClassifier(verbose=True)]
 
     target_classes = ['Metric Choice']
     target_labels = ['perfect_metric_choice']
@@ -167,11 +163,11 @@ def estimator_tests(configs):
         data = []
         for j, data_label in enumerate(data_labels):
             if data_label == 'All_Features':
-                datasets = preprocessing_main(cluster_data_ini.loc[:, ["number_of_points",
-                                                                       "points_diff",
-                                                                       "z_spread",
-                                                                       "x_spread",
-                                                                       "y_spread"]],
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread',
+                                               'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
                                               cluster_data_ini[target_label])
 
             for i, classifier in enumerate(classifiers):
@@ -212,6 +208,7 @@ def estimator_tests(configs):
                         test_X = datasets[12]
                         test_y = datasets[13]
 
+                    print("Training")
                     classifier.fit(train_X, train_y)
                     start = time.time()
                     pred_y = classifier.predict(test_X)
@@ -228,7 +225,6 @@ def estimator_tests(configs):
                     print('Accuracy: ' + str(acc))
                     print('Class Labels:' + str(class_labels))
                     print('Confusion Matrix: ' + str(mat) + '\n')
-
 
     return
 

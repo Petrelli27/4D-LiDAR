@@ -1,7 +1,7 @@
 import numpy as np
 import yaml
 import os
-import analyze_parallel
+import analyze_parallel as analyze_parallel
 import pandas as pd
 import mpi4py.rc
 mpi4py.rc.threads = False
@@ -30,6 +30,8 @@ def run_monte_carlo(config):
 
     if rank == 0:
         logger.info(f"Number of pickle files to analyse: {len(pickle_files)}")
+        os.makedirs('full_results', exist_ok=True)
+        os.makedirs('assignment_results', exist_ok=True)
     else:
         pass
 
@@ -62,7 +64,7 @@ def run_monte_carlo(config):
 
     if rank == 0:
         # convert to dataframe
-        results_as_df = pd.DataFrame(np.array(all_simulation_data).squeeze(), columns=config['results_column_names'])
+        results_as_df = pd.DataFrame(np.array(all_simulation_data).squeeze().reshape(len(pickle_files), len(config['results_column_names'])), columns=config['results_column_names'])
         results_as_df['pickle_file'] = pickle_files
 
         # save as csv

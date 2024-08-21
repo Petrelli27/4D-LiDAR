@@ -5,7 +5,6 @@ import numpy.linalg as LA
 from scipy.spatial.transform import Rotation
 from mpl_toolkits.mplot3d import Axes3D
 import open3d as o3d
-import copy
 
 import random
 
@@ -290,6 +289,62 @@ def bbox3d(x, y, z, return_evec=False):
     nrc += means[:, np.newaxis]
     rrc += means[:, np.newaxis]
 
+    # ax.plot(rrc[0, 0:2], rrc[1, 0:2], rrc[2, 0:2], color='b')  # W
+    # ax.plot(rrc[0, 1:3], rrc[1, 1:3], rrc[2, 1:3], color='b')  # L
+    # ax.plot(rrc[0, [3, 7]], rrc[1, [3, 7]], rrc[2, [3, 7]], color='b')  # H
+
+    # print(np.linalg.norm(rrc[:, 3] - rrc[:, 7]))
+    # print(np.linalg.norm(rrc[:, 0] - rrc[:, 1]))
+    # print(np.linalg.norm(rrc[:, 1] - rrc[:, 2]))
+    # print(np.linalg.norm(nrc[:, 3] - nrc[:, 7]))
+    # print(np.linalg.norm(nrc[:, 0] - nrc[:, 1]))
+    # print(np.linalg.norm(nrc[:, 1] - nrc[:, 2]))
+
+    # ax.scatter(realigned_coords[0, :], realigned_coords[1, :], realigned_coords[2, :])
+
+    # z1 plane boundary
+    # ax.plot(nrc[0, 0:2], nrc[1, 0:2], nrc[2, 0:2], color='b')
+    # ax.plot(nrc[0, 1:3], nrc[1, 1:3], nrc[2, 1:3], color='b')
+    # ax.plot(nrc[0, 2:4], nrc[1, 2:4], nrc[2, 2:4], color='b')
+    # ax.plot(nrc[0, [3, 0]], nrc[1, [3, 0]], nrc[2, [3, 0]], color='b')
+
+    # z2 plane boundary
+    # ax.plot(nrc[0, 4:6], nrc[1, 4:6], nrc[2, 4:6], color='b')
+    # ax.plot(nrc[0, 5:7], nrc[1, 5:7], nrc[2, 5:7], color='b')
+    # ax.plot(nrc[0, 6:], nrc[1, 6:], nrc[2, 6:], color='b')
+    # ax.plot(nrc[0, [7, 4]], nrc[1, [7, 4]], nrc[2, [7, 4]], color='b')
+
+    # z1 and z2 connecting boundaries
+    # ax.plot(nrc[0, [0, 4]], nrc[1, [0, 4]], nrc[2, [0, 4]], color='b')
+    # ax.plot(nrc[0, [1, 5]], nrc[1, [1, 5]], nrc[2, [1, 5]], color='b')
+    # ax.plot(nrc[0, [2, 6]], nrc[1, [2, 6]], nrc[2, [2, 6]], color='b')
+    # ax.plot(nrc[0, [3, 7]], nrc[1, [3, 7]], nrc[2, [3, 7]], color='b')
+
+    # z1 plane boundary
+    # ax.plot(rrc[0, 0:2], rrc[1, 0:2], rrc[2, 0:2], color='b')  # W
+    # ax.plot(rrc[0, 1:3], rrc[1, 1:3], rrc[2, 1:3], color='b')  # L
+    # ax.plot(rrc[0, 2:4], rrc[1, 2:4], rrc[2, 2:4], color='b')
+    # ax.plot(rrc[0, [3, 0]], rrc[1, [3, 0]], rrc[2, [3, 0]], color='b')
+
+    # z2 plane boundary
+    # ax.plot(rrc[0, 4:6], rrc[1, 4:6], rrc[2, 4:6], color='b')
+    # ax.plot(rrc[0, 5:7], rrc[1, 5:7], rrc[2, 5:7], color='b')
+    # ax.plot(rrc[0, 6:], rrc[1, 6:], rrc[2, 6:], color='b')
+    # ax.plot(rrc[0, [7, 4]], rrc[1, [7, 4]], rrc[2, [7, 4]], color='b')
+
+    # z1 and z2 connecting boundaries
+    # ax.plot(rrc[0, [0, 4]], rrc[1, [0, 4]], rrc[2, [0, 4]], color='b')
+    # ax.plot(rrc[0, [1, 5]], rrc[1, [1, 5]], rrc[2, [1, 5]], color='b')
+    # ax.plot(rrc[0, [2, 6]], rrc[1, [2, 6]], rrc[2, [2, 6]], color='b')
+    # ax.plot(rrc[0, [3, 7]], rrc[1, [3, 7]], rrc[2, [3, 7]], color='b')  # H
+    # eigen basis
+    # ax.plot([means[0], means[0] + evec[0, 0]], [means[1], means[1] + evec[1, 0]], [means[2], means[2] + evec[2, 0]],
+    # color='r', linewidth=4)
+    # ax.plot([means[0], means[0] + evec[0, 1]], [means[1], means[1] + evec[1, 1]], [means[2], means[2] + evec[2, 1]],
+    # color='g', linewidth=4)
+    # ax.plot([means[0], means[0] + evec[0, 2]], [means[1], means[1] + evec[1, 2]], [means[2], means[2] + evec[2, 2]],
+    # color='k', linewidth=4)
+
     c_x = sum(rrc[0, :]) / len(rrc[0, :])
     c_y = sum(rrc[1, :]) / len(rrc[1, :])
     c_z = sum(rrc[2, :]) / len(rrc[2, :])
@@ -300,62 +355,6 @@ def bbox3d(x, y, z, return_evec=False):
         return rrc, [c_x, c_y, c_z], evec, evals
     else:
         return rrc, [c_x, c_y, c_z], evals
-    
-def xyz_to_o3d_cloud(X,Y,Z, return_fpfh=False):
-    points = np.vstack((X, Y, Z)).T  # orginal point cloud
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    if return_fpfh:
-        radius_normal = 0.3
-        radius_feature = 0.6
-        pcd.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
-        fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=80))
-        return pcd, fpfh
-    else:
-        return pcd
-    
-def bbox3d_fpfh(X, Y, Z, prev_cloud, prev_fpfh, prev_pos, prev_q, visualize=False):
-    # point cloud registration of target point cloud relative to some source point cloud
-    # fpfh must be compared to another point cloud
-    # PCA computes the orientation relative to L, and not to some other point cloud
-    # PCA results and fpfh results are not compatible.
-    # if we rely a wrong PCA starting orientation, we have no way to correct it
-
-    points = np.vstack((X, Y, Z)).T  # orginal point cloud
-    current_pcd = o3d.geometry.PointCloud()
-    current_pcd.points = o3d.utility.Vector3dVector(points)
-
-    radius_normal = 0.3  # radius of neighborhood used for local normal estimations
-    current_pcd.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
-
-
-    radius_feature = 2.0*radius_normal
-    distance_threshold = 0.5*radius_normal
-    current_fpfh = o3d.pipelines.registration.compute_fpfh_feature(current_pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
-    result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(prev_cloud, current_pcd, prev_fpfh, current_fpfh, o3d.pipelines.registration.FastGlobalRegistrationOption(maximum_correspondence_distance=distance_threshold))
-    
-    R_prev_to_cur = result.transformation[0:3][0:3] # rotation from prev to current cloud
-    R_0_to_prev = quat2rotm(prev_q)
-    R_fpfh = R_0_to_prev @ R_prev_to_cur
-
-    rotated_pcd = copy.deepcopy(current_pcd) # we want rotated_pcd to be centered and oriented at the origin
-    
-    pos_fpfh = result.transformation[0:3][3] + prev_pos
-    rotated_pcd.translate(-pos_fpfh)
-    rotated_pcd.rotate(R_fpfh.T)
-    # Get the minimum and maximum bounds
-    min_bound = rotated_pcd.get_min_bound()
-    max_bound = rotated_pcd.get_max_bound()
-    # Extract xmin, ymin, zmin, and xmax, ymax, zmax
-    xmin, ymin, zmin = min_bound
-    xmax, ymax, zmax = max_bound
-
-    rectCoords = lambda x1, y1, z1, x2, y2, z2: np.array([[x1, x1, x2, x2, x1, x1, x2, x2],
-                                                          [y1, y2, y2, y1, y1, y2, y2, y1],
-                                                          [z1, z1, z1, z1, z2, z2, z2, z2]])
-    rrc = np.matmul(R_fpfh.T, rectCoords(xmin, ymin, zmin, xmax, ymax, zmax))  # rrc = rotated rectangle coordinates
-
-    return rrc, pos_fpfh, R_fpfh
 
 
 def associated(z_q_k, z_pi_k, z_p_k, R_1):

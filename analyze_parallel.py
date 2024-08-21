@@ -286,8 +286,9 @@ def run(pickle_file, configs, logger):
     vT_0 = configs['ini_vel_guess']  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
     omega_0 = configs['ini_ang_vel_guess']  # rad/s
     omega_true = omega_L
-    q_ini = configs['ini_orientation']
+    #q_ini = configs['ini_orientation']
     q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
+    q_ini = q_true[0, :]
 
     p_0 = np.array([0., 0., 0.])   # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
     p1_0 = p_0 + np.array([0., 0., 0.])
@@ -410,9 +411,15 @@ def run(pickle_file, configs, logger):
                "ransac 0": [0, 0, 0, 0, 0],
                "ransac 1": [0, 0, 0, 0, 0],
                "ransac 2": [0, 0, 0, 0, 0],
-               "pca 3": [0, 0, 0, 0, 0],
-               "pred 4": [0, 0, 0, 0, 0],
-               "pca 5": [0, 0, 0, 0, 0],
+               "ransac 3.1": [0, 0, 0, 0, 0],
+               "pca 3.1": [0, 0, 0, 0, 0],
+               "pca 3.2": [0, 0, 0, 0, 0],
+               "pca 3.3": [0, 0, 0, 0, 0],
+               "ransac 4.1": [0, 0, 0, 0, 0],
+               "ransac 4.2": [0, 0, 0, 0, 0],
+               "pca 4.1": [0, 0, 0, 0, 0],
+               "pred 4.1": [0, 0, 0, 0, 0],
+               "ransac 5": [0, 0, 0, 0, 0],
                "ransac 6": [0, 0, 0, 0, 0],
                "ransac 7": [0, 0, 0, 0, 0],
                "ransac 8": [0, 0, 0, 0, 0]}
@@ -658,6 +665,8 @@ def run(pickle_file, configs, logger):
             RP = ransac_pred_diff < short_metric_thresh
             CP = pca_pred_diff < short_metric_thresh
             RC = ransac_pca_diff < short_metric_thresh
+            RR = ransac_prev_diff < ran_prev_thresh
+            CC = pca_prev_diff < pca_prev_thresh
             if RP and CP and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 1"
@@ -665,13 +674,33 @@ def run(pickle_file, configs, logger):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 2"
             elif (not RP) and CP and (not RC):
-                use_measurement = 1  # pca
-                short_metric_choice = "pca 3"
+                if RR and CC:
+                    use_measurement = 1
+                    short_metric_choice = "pca 3.1"
+                elif RR and (not CC):
+                    use_measurement = 2
+                    short_metric_choice = "ransac 3.1"
+                elif CC and (not RR):
+                    use_measurement = 1
+                    short_metric_choice = "pca 3.2"
+                else:
+                    use_measurement = 1
+                    short_metric_choice = "pca 3.3"
             elif (not RP) and (not CP) and (not RC):
-                use_measurement = 3
-                short_metric_choice = "pred 4"
+                if RR and CC:
+                    use_measurement = 1
+                    short_metric_choice = "ransac 4.1"
+                elif RR and (not CC):
+                    use_measurement = 2
+                    short_metric_choice = "ransac 4.2"
+                elif CC and (not RR):
+                    use_measurement = 1
+                    short_metric_choice = "pca 4.1"
+                else:
+                    use_measurement = 3
+                    short_metric_choice = "pred 4.1"
             elif (not RP) and CP and RC:
-                use_measurement = 1  # pca
+                use_measurement = 2  # ransac
                 short_metric_choice = "ransac 5"
             elif RP and (not CP) and RC:
                 use_measurement = 2

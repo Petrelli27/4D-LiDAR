@@ -13,8 +13,10 @@ pickle_directory_name: 'results_1000'           # the directory where all the pi
 results_column_names: ['rmse_px', 'rmse_py', 'rmse_pz', 'rmse_omx', 'rmse_omy', 'rmse_omz', 'rmse_vdx', 'rmse_vdy', 'rmse_vdz', 'rmse_x_before', 'rmse_y_before', 'rmse_z_before', 'rmse_x_after', 'rmse_y_after', 'rmse_z_after', 'rmse_q']
 master_file_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 top_level_dir: ''                       # the folder where csv will be saved and where code is
-results_file_name: 'monte_carlo_results_results_1000.csv'    # name of file containing all results
-assignment_results_file_name: 'assignment_results_1000'      # for the assigment exercise in analyze_parallel.py
+results_file_name: 'monte_carlo_results_1000_qinit_is_true.csv'    # name of file containing all results
+assignment_results_file_name: 'assignment_1000_qinit_is_true'      # for the assigment exercise in analyze_parallel.py
+machine_learning_data_file_path: 'combined_output_1000.csv'  # combined df of all runs
+machine_learning_data_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 options: ''                                     # specifying 'p' will enable printing of some messages to console
 
 
@@ -43,8 +45,8 @@ tolerance: 0.01                                # tolerance above which iteration
 #########################################
 # Kabsch config
 ########################################
-moving_average_len: 200                        # number of iterations to average over
-settling_time: 200                             # number of iterations before which Kabsch is not activated
+moving_average_len: 100                        # number of iterations to average over
+settling_time: 100                             # number of iterations before which Kabsch is not activated
 
 
 ##########################################
@@ -60,14 +62,14 @@ number_of_skips: 1                             # when choosing frequencies from 
 ##########################################
 # Heuristic config
 #########################################
-start: 200                                     # number of iterations before which heuristic is inactive
+start: 100                                     # number of iterations before which heuristic is inactive
 ransac_prediction_threshold: 20                # maximal difference in degrees between ransac and predicted orientations
 pca_prediction_threshold: 20                   # maximal difference in degrees between pca and predicted orientations
-ransac_pca_threshold: 25                       # maximal difference in degrees between ransac and pca orientations
+ransac_pca_threshold: 15                       # maximal difference in degrees between ransac and pca orientations
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
-true_orientation_difference: 20                # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: True                       # for comparison
-short_metric_thresh: 10                         # threshold angle in degrees for short metric
+true_orientation_difference: 15                # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
+use_perfect_metric: False                       # for comparison
+short_metric_thresh: 20                         # threshold angle in degrees for short metric
 
 
 ######################################

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=40
-#SBATCH --time=1:00:0
-#SBATCH --job-name monte_carlo_true_metric 
-#SBATCH --output=mc_mpi_output_true_metric_%j.txt
+#SBATCH --time=3:00:0
+#SBATCH --job-name monte_carlo_1000_qinit_is_true 
+#SBATCH --output=mc_mpi_output_1000_qinit_is_true_%j.txt
 #SBATCH --mail-type=FAIL
 
 module load CCEnv StdEnv/2023
