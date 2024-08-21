@@ -324,8 +324,9 @@ def estimator_tests(configs):
                     print('Class Labels:' + str(class_labels))
                     print('Confusion Matrix: ' + str(mat) + '\n')
                     
-                    joblib.dump(model, 'perfect_metric_model' + data_label + '.pk1')
+                    joblib.dump(model, 'perfect_metric_model' + data_label + '.pkl')
                     print("saved model")
+                    print('\n')
 
     return
 
