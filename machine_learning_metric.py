@@ -36,8 +36,8 @@ from sklearn.model_selection import cross_validate
 from sklearn.model_selection import KFold
 import numpy as np
 import yaml
+import joblib
 
-print("hello")
 
 @staticmethod
 def preprocessing_main(X, y):
@@ -117,6 +117,7 @@ def estimator_tests(configs):
     cluster_data_ini = pd.read_csv(file_path, sep=',', header=0,
                                    names=configs['machine_learning_data_columns'])
 
+
     ###############################
     # all options
     ###############################
@@ -152,7 +153,7 @@ def estimator_tests(configs):
     target_classes = ['Metric Choice']
     target_labels = ['perfect_metric_choice']
 
-    data_labels = ['All_Features']
+    data_labels = ['GRTD', 'GRT', 'GRD', 'GTD', 'RTD', 'GR', 'GT', 'GD', 'RT', 'RD', 'TD', 'G', 'R', 'T', 'D']  #
 
     dataset_forms = ['Normalized']
 
@@ -163,13 +164,109 @@ def estimator_tests(configs):
     for k, target_label in enumerate(target_labels):
         data = []
         for j, data_label in enumerate(data_labels):
-            if data_label == 'All_Features':
+            if data_label == 'GRTD':
+                print('GRTD')
                 datasets = preprocessing_main(cluster_data_ini.loc[:,
                                               ['number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread',
                                                'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff',
                                                'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff',
                                                'pca_pred_diff']],
                                               cluster_data_ini[target_label])
+            elif data_label == 'GRT':
+                print('GRT')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'z_spread', 'x_spread', 'y_spread',
+                                               'pca_prev_diff', 'ransac_prev_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'GRD':
+                print('GRD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread',
+                                               'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'GTD':
+                print('GTD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread',
+                                               'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'RTD':
+                print('RTD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['points_diff',
+                                               'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'GR':
+                print('GR')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'z_spread', 'x_spread', 'y_spread',
+                                               'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'GT':
+                print('GT')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'z_spread', 'x_spread', 'y_spread',
+                                               'pca_prev_diff', 'ransac_prev_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'GD':
+                print('GD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread',
+                                               'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'RT':
+                print('RT')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['pca_prev_diff', 'ransac_prev_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'RD':
+                print('RD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['points_diff',
+                                               'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'TD':
+                print('TD')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['points_diff',
+                                               'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'G':
+                print('G')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['number_of_points', 'z_spread', 'x_spread', 'y_spread']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'R':
+                print('R')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['ransac_pca_diff', 'ransac_pred_diff',
+                                               'pca_pred_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'T':
+                print('T')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['pca_prev_diff', 'ransac_prev_diff']],
+                                              cluster_data_ini[target_label])
+            elif data_label == 'D':
+                print('D')
+                datasets = preprocessing_main(cluster_data_ini.loc[:,
+                                              ['points_diff',
+                                               'x_spread_diff', 'y_spread_diff',
+                                               'z_spread_diff']],
+                                              cluster_data_ini[target_label])
+
 
             for i, classifier in enumerate(classifiers):
                 for n, data_type in enumerate(dataset_forms):
@@ -226,6 +323,9 @@ def estimator_tests(configs):
                     print('Accuracy: ' + str(acc))
                     print('Class Labels:' + str(class_labels))
                     print('Confusion Matrix: ' + str(mat) + '\n')
+                    
+                    joblib.dump(model, 'perfect_metric_model' + data_label + '.pk1')
+                    print("saved model")
 
     return
 
