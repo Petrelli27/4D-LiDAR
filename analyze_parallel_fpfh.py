@@ -681,31 +681,31 @@ def run(pickle_file, configs, logger):
                 short_metric_choice = "fpfh 9"
             if RC:
                 RC_good = True # sets flag
-                good_prev_cloud, good_prev_fpfh = boundingbox.xyz_to_o3d_voxel_cloud(X_i, Y_i, Z_i, return_fpfh=True)
+                good_prev_cloud, good_prev_fpfh = boundingbox.xyz_to_o3d_cloud(X_i, Y_i, Z_i, return_fpfh=True)
                 good_prev_pos = z_p_k.copy() # from previous iteration
                 good_prev_q = z_q_k.copy() # from previous iteration
-            if (not RC_good) and RP and CP and (not RC):
+            if RP and CP and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 1"
-            elif (not RC_good) and RP and (not CP) and (not RC):
+            elif RP and (not CP) and (not RC):
                 use_measurement = 2  # ransac
                 short_metric_choice = "ransac 2"
-            elif (not RC_good) and (not RP) and CP and (not RC):
+            elif (not RP) and CP and (not RC):
                 use_measurement = 1  # pca
                 short_metric_choice = "pca 3"
-            elif (not RC_good) and (not RP) and (not CP) and (not RC):
+            elif (not RP) and (not CP) and (not RC):
                 use_measurement = 3
                 short_metric_choice = "pred 4"
-            elif (not RC_good) and (not RP) and CP and RC:
+            elif (not RP) and CP and RC:
                 use_measurement = 1  # pca
                 short_metric_choice = "pca 5"
-            elif (not RC_good) and RP and (not CP) and RC:
+            elif RP and (not CP) and RC:
                 use_measurement = 2
                 short_metric_choice = "ransac 6"
-            elif (not RC_good) and (not RP) and (not CP) and (RC):
+            elif (not RP) and (not CP) and (RC):
                 use_measurement = 2
                 short_metric_choice = "ransac 7"
-            elif (not RC_good) and (RP and CP and RC):
+            elif (RP and CP and RC):
                 use_measurement = 2
                 short_metric_choice = "ransac 8"
         else:  # at the start, don't use prediction

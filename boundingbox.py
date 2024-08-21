@@ -355,6 +355,61 @@ def bbox3d(x, y, z, return_evec=False):
         return rrc, [c_x, c_y, c_z], evec, evals
     else:
         return rrc, [c_x, c_y, c_z], evals
+    
+def xyz_to_o3d_cloud(X,Y,Z, return_fpfh=False):
+    points = np.vstack((X, Y, Z)).T  # orginal point cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    if return_fpfh:
+        radius_normal = 0.3
+        radius_feature = 0.6
+        pcd.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
+        fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=80))
+        return pcd, fpfh
+    else:
+        return pcd
+    
+def bbox3d_fpfh(X, Y, Z, prev_cloud, prev_fpfh, prev_pos, prev_q, visualize=False):
+    # point cloud registration of target point cloud relative to some source point cloud
+    # fpfh must be compared to another point cloud
+    # PCA computes the orientation relative to L, and not to some other point cloud
+    # PCA results and fpfh results are not compatible.
+    # if we rely a wrong PCA starting orientation, we have no way to correct it
+
+    points = np.vstack((X, Y, Z)).T  # orginal point cloud
+    current_pcd = o3d.geometry.PointCloud()
+    current_pcd.points = o3d.utility.Vector3dVector(points)
+
+    radius_normal = 0.3  # radius of neighborhood used for local normal estimations
+    current_pcd.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
+
+
+    radius_feature = 2.0*radius_normal
+    distance_threshold = 0.5*radius_normal
+    current_fpfh = o3d.pipelines.registration.compute_fpfh_feature(current_pcd, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+    result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(prev_cloud, current_pcd, prev_fpfh, current_fpfh, o3d.pipelines.registration.FastGlobalRegistrationOption(maximum_correspondence_distance=distance_threshold))
+    
+    R_prev_to_cur = result.transformation[0:3,0:3] # rotation from prev to current cloud
+    R_0_to_prev = quat2rotm(prev_q)
+    R_fpfh = R_0_to_prev @ R_prev_to_cur
+
+    rotated_pcd = copy.deepcopy(current_pcd) # we want rotated_pcd to be centered and oriented at the origin
+    pos_fpfh = result.transformation[0:3,3] + prev_pos
+    rotated_pcd.translate(-pos_fpfh)
+    rotated_pcd.rotate(R_fpfh.T)
+    # Get the minimum and maximum bounds
+    min_bound = rotated_pcd.get_min_bound()
+    max_bound = rotated_pcd.get_max_bound()
+    # Extract xmin, ymin, zmin, and xmax, ymax, zmax
+    xmin, ymin, zmin = min_bound
+    xmax, ymax, zmax = max_bound
+
+    rectCoords = lambda x1, y1, z1, x2, y2, z2: np.array([[x1, x1, x2, x2, x1, x1, x2, x2],
+                                                          [y1, y2, y2, y1, y1, y2, y2, y1],
+                                                          [z1, z1, z1, z1, z2, z2, z2, z2]])
+    rrc = np.matmul(R_fpfh.T, rectCoords(xmin, ymin, zmin, xmax, ymax, zmax))  # rrc = rotated rectangle coordinates
+
+    return rrc, pos_fpfh, R_fpfh
 
 
 def associated(z_q_k, z_pi_k, z_p_k, R_1):
