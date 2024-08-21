@@ -16,8 +16,8 @@ from scipy.signal import find_peaks
 import mpi4py.rc
 mpi4py.rc.threads = False
 from mpi4py import MPI
-import joblib
 import random
+import joblib
 
 random.seed(42)
 np.random.seed(42)
@@ -661,64 +661,23 @@ def run(pickle_file, configs, logger):
             use_measurement = 2  # ransac by default
             short_metric_choice = "ransac 0"
         elif i > configs['start']:
-            # short metric
+            # ml metric
+            model = joblib.load(configs['machine_learning_model_file'])
 
-            RP = ransac_pred_diff < short_metric_thresh
-            CP = pca_pred_diff < short_metric_thresh
-            RC = ransac_pca_diff < short_metric_thresh
-            RR = ransac_prev_diff < ran_prev_thresh
-            CC = pca_prev_diff < pca_prev_thresh
-            if RP and CP and (not RC):
-                use_measurement = 2  # ransac
+            features = []
+            prediction = model.predict(features)
+            if prediction == 'ransac':
+                use_measurement = 2
                 short_metric_choice = "ransac 1"
-            elif RP and (not CP) and (not RC):
-                use_measurement = 2  # ransac
-                short_metric_choice = "ransac 2"
-            elif (not RP) and CP and (not RC):
-                if RR and CC:
-                    use_measurement = 1
-                    short_metric_choice = "pca 3.1"
-                elif RR and (not CC):
-                    use_measurement = 2
-                    short_metric_choice = "ransac 3.1"
-                elif CC and (not RR):
-                    use_measurement = 1
-                    short_metric_choice = "pca 3.2"
-                else:
-                    use_measurement = 1
-                    short_metric_choice = "pca 3.3"
-            elif (not RP) and (not CP) and (not RC):
-                if RR and CC:
-                    use_measurement = 1
-                    short_metric_choice = "ransac 4.1"
-                elif RR and (not CC):
-                    use_measurement = 2
-                    short_metric_choice = "ransac 4.2"
-                elif CC and (not RR):
-                    use_measurement = 1
-                    short_metric_choice = "pca 4.1"
-                else:
-                    use_measurement = 3
-                    short_metric_choice = "pred 4.1"
-            elif (not RP) and CP and RC:
-                use_measurement = 2  # ransac
-                short_metric_choice = "ransac 5"
-            elif RP and (not CP) and RC:
-                use_measurement = 2
-                short_metric_choice = "ransac 6"
-            elif (not RP) and (not CP) and (RC):
-                use_measurement = 2
-                short_metric_choice = "ransac 7"
-            elif (RP and CP and RC):
-                use_measurement = 2
-                short_metric_choice = "ransac 8"
-        else:  # at the start, don't use prediction
-            if ransac_pred_diff > pca_pred_diff:
+            elif prediction == 'pca':
                 use_measurement = 1
-                short_metric_choice = "pca 0"
+                short_metric_choice = "pca 2"
+            elif prediction == 'prediction':
+                use_measurement = 3
+                short_metric_choice = 'prediction 3'
             else:
                 use_measurement = 2
-                short_metric_choice = "ransac 0"
+                short_metric_choice = 'all wrong'
         metric_boxes[short_metric_choice][0] += 1
         short_metric_choices.append(short_metric_choice)
 
