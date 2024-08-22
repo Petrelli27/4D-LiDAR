@@ -240,6 +240,29 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
     return q_s
 
 
+def rotate_to_within_45_q_true(q_true, q_ini):
+    R_true = quat2rotm(q_true)
+    R_ini = quat2rotm(q_ini)
+    R_rel = R_true.T @ R_ini
+    axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
+    angles = []
+    Rs = []
+    for x in axes_candidates:
+        for y in axes_candidates:
+            if np.dot(x, y) == 0:
+                z = np.cross(x, y)
+                R_candidate = np.vstack([x,y,z])
+                R_net = R_rel @ R_candidate
+                theta = np.arccos(0.5*(np.trace(R_net)-1))
+                angles.append(theta)
+                Rs.append(R_candidate)
+            else:
+                continue
+    best_index = np.argmin(angles)
+    q_ini_adjusted = rotm2quat(Rs[best_index])
+    return q_ini_adjusted
+
+
 def run(pickle_file, configs, logger):
     # Initialize MPI
     comm = MPI.COMM_WORLD
@@ -288,10 +311,11 @@ def run(pickle_file, configs, logger):
         'ini_vel_guess']  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
     omega_0 = configs['ini_ang_vel_guess']  # rad/s
     omega_true = omega_L
-    # q_ini = configs['ini_orientation']
+    q_ini = configs['ini_orientation']
     q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(
         rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
-    q_ini = q_true[0, :]
+    # q_ini = q_true[0, :]
+    q_ini = rotate_to_within_45_q_true(q_true[0, :], q_ini)
 
     p_0 = np.array([0., 0.,
                     0.])  # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
