@@ -8,6 +8,7 @@ import os
 import mpi4py.rc
 mpi4py.rc.threads = False
 from mpi4py import MPI
+import pandas as pd
 
 # some utility functions
 def tilde(v):
@@ -95,9 +96,9 @@ def get_initial_conditions(conditions_count=100):
         rdot0 = np.array([vx, vy, vz])
     
         if i==0:
-            nframes = 5000
+            nframes = 4000
         elif i==1:
-            nframes = 10000
+            nframes = 4000
         else:
             nframes = 4000
 
@@ -176,7 +177,7 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    num_tests = 1000
+    num_tests = 4
     try:
         initial_conditions_list = list(get_initial_conditions(num_tests))
         total_conditions = len(initial_conditions_list)
@@ -194,7 +195,10 @@ if __name__ == '__main__':
 
         # Process 0 saves all results
         if rank == 0:
+            ini_cond_df = pd.DataFrame(initial_conditions_list)
             flat_completed = [item for sublist in all_completed for item in sublist]
+            ini_cond_df['file index'] = flat_completed
+            ini_cond_df.to_csv('initial_conditions.csv', sep=',', header=True, index=False)
             print(f"Total completed simulations: {len(flat_completed)}")
             print("Completed simulation indices:", flat_completed)
 

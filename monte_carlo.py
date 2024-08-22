@@ -1,7 +1,7 @@
 import numpy as np
 import yaml
 import os
-import analyze_parallel as analyze_parallel
+import analyze_parallel_ml_metric as analyze_parallel
 import pandas as pd
 import mpi4py.rc
 mpi4py.rc.threads = False
