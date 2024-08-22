@@ -662,10 +662,7 @@ def run(pickle_file, configs, logger):
             # ml metric
             model = joblib.load(configs['machine_learning_model_file'])
 
-            features = np.array([num_points, num_points - number_of_pointss[i - 1], max(Z_i) - min(Z_i), max(X_i) - min(X_i),
-                        max(Y_i) - min(Y_i), 0, 0, (max(X_i) - min(X_i)) - x_spreads[i - 1],
-                        (max(Y_i) - min(Y_i)) - y_spreads[i - 1], (max(Z_i) - min(Z_i)) - z_spreads[i - 1],
-                       0, 0, 0]).reshape(1, -1)
+            features = np.array([[pca_prev_diff, ransac_prev_diff, ransac_pca_diff, ransac_pred_diff, pca_pred_diff]])
             prediction = model.predict(features)
             if prediction[0] == 'ransac':
                 use_measurement = 2
@@ -675,7 +672,7 @@ def run(pickle_file, configs, logger):
                 use_measurement = 1
                 short_metric_choice = "pca 2"
                 logger.info("ML Metric says pca")
-            elif prediction[0] == 'prediction':
+            elif prediction[0] == 'pred':
                 use_measurement = 3
                 short_metric_choice = 'prediction 3'
                 logger.info("ML Metric says prediction")
@@ -684,7 +681,7 @@ def run(pickle_file, configs, logger):
                 short_metric_choice = 'all wrong 4'
                 logger.info("ML Metric says all wrong")
             else:
-                logger.info("Error: choice invalid")
+                logger.info("Error: choice invalid, prediction was " + str(prediction))
         metric_boxes[short_metric_choice][0] += 1
         short_metric_choices.append(short_metric_choice)
 
@@ -710,8 +707,20 @@ def run(pickle_file, configs, logger):
                         values = [pca_true_diff, ransac_true_diff, pred_true_diff]
                         min_index, min_value = min(enumerate(values), key=lambda x: x[1])
                         ideal_measurement = min_index + 1  # we want from 1 to 3
-                        perfect_metric_choice = "all wrong"
-                        metric_boxes[short_metric_choice][4] += 1
+                        if ideal_measurement == 1:
+                            perfect_metric_choice = "pca"
+                            metric_boxes[short_metric_choice][2] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        elif ideal_measurement == 2:
+                            perfect_metric_choice = "ransac"
+                            metric_boxes[short_metric_choice][1] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        elif ideal_measurement == 3:
+                            perfect_metric_choice = "prediction"
+                            metric_boxes[short_metric_choice][3] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        else:
+                            perfect_metric_choice = "error"
         logger.info('Correct choice is ' + str(perfect_metric_choice))
         perfect_metric_choices.append(perfect_metric_choice)
 

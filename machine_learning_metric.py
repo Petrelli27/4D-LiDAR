@@ -153,13 +153,17 @@ def estimator_tests(configs):
     target_classes = ['Metric Choice']
     target_labels = ['perfect_metric_choice']
 
-    data_labels = ['GRTD', 'GRT', 'GRD', 'GTD', 'RTD', 'GR', 'GT', 'GD', 'RT', 'RD', 'TD', 'G', 'R', 'T', 'D']  #
+    data_labels = ['RT']  #
 
     dataset_forms = ['Original']
 
-    ######################################
-    # hyperparameter tuning
-    #####################################
+    # testing
+    # model = joblib.load(configs['machine_learning_model_file'])
+
+    # for i in range (0, 350):
+    #     features = np.array([[i, i, i, i, i]])
+    #     prediction = model.predict(features)
+    #     print(prediction)
 
     for k, target_label in enumerate(target_labels):
         data = []
@@ -305,6 +309,8 @@ def estimator_tests(configs):
                         train_y = datasets[1]
                         test_X = datasets[12]
                         test_y = datasets[13]
+                        print(test_y)
+                        print(test_X)
 
                     print("Training")
                     classifier.fit(train_X, train_y)
