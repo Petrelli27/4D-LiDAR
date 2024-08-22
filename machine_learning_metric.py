@@ -155,7 +155,7 @@ def estimator_tests(configs):
 
     data_labels = ['GRTD', 'GRT', 'GRD', 'GTD', 'RTD', 'GR', 'GT', 'GD', 'RT', 'RD', 'TD', 'G', 'R', 'T', 'D']  #
 
-    dataset_forms = ['Normalized']
+    dataset_forms = ['Original']
 
     ######################################
     # hyperparameter tuning

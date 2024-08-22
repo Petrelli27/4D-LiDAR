@@ -14,6 +14,7 @@ import scipy
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 import mpi4py.rc
+
 mpi4py.rc.threads = False
 from mpi4py import MPI
 import random
@@ -22,14 +23,16 @@ import joblib
 random.seed(42)
 np.random.seed(42)
 
+
 def get_dimensions(p1, p, q):
     p1_to_p = p - p1
     R = quat2rotm(q)
     p1_debris_frame = R.T @ p1_to_p
-    L = 2*p1_debris_frame[0]
-    W = 2*p1_debris_frame[1]
-    D = 2*p1_debris_frame[2]
+    L = 2 * p1_debris_frame[0]
+    W = 2 * p1_debris_frame[1]
+    D = 2 * p1_debris_frame[2]
     return L, W, D
+
 
 def sum_of_sinusoids(t_fit, *params_fit):
     y_fit = np.zeros_like(t_fit)
@@ -44,7 +47,6 @@ def sum_of_sinusoids(t_fit, *params_fit):
 
 
 def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_skip, true, params_ini):
-
     nframes = len(y)
     time_interval = (nframes - 1) * dt
     y_orig = y.copy()
@@ -161,7 +163,7 @@ def rodrigues(omega, dt):
 
 
 def rodrigues_axis_angle(axis, angle):
-    axis = axis/np.linalg.norm(axis)  # Unit vector along omega
+    axis = axis / np.linalg.norm(axis)  # Unit vector along omega
     phi = angle
     ee_t = np.matmul(axis.reshape(len(axis), 1), axis.reshape(1, len(axis)))
     e_tilde = skew(axis)
@@ -217,7 +219,6 @@ def orientationupdate(dt, x_k):
 
 
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
-
     Rot_0 = quat2rotm(q_ini)
     # Rot_0 = np.eye(3)
     # print(Rot_0)
@@ -231,15 +232,15 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
             q_s.append(q_i)
         else:
             q_i_alt = -q_i
-            q_prev = q_s[i-1]
+            q_prev = q_s[i - 1]
             if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
                 q_s.append(q_i)
             else:
                 q_s.append(q_i_alt)
     return q_s
 
-def run(pickle_file, configs, logger):
 
+def run(pickle_file, configs, logger):
     # Initialize MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -283,14 +284,17 @@ def run(pickle_file, configs, logger):
     # Running the simulation - Initializations
 
     # Initializations in L Frame
-    vT_0 = configs['ini_vel_guess']  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
+    vT_0 = configs[
+        'ini_vel_guess']  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
     omega_0 = configs['ini_ang_vel_guess']  # rad/s
     omega_true = omega_L
-    #q_ini = configs['ini_orientation']
-    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
+    # q_ini = configs['ini_orientation']
+    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(
+        rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
     q_ini = q_true[0, :]
 
-    p_0 = np.array([0., 0., 0.])   # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
+    p_0 = np.array([0., 0.,
+                    0.])  # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
     p1_0 = p_0 + np.array([0., 0., 0.])
     x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
     num_states = len(x_0)
@@ -319,15 +323,15 @@ def run(pickle_file, configs, logger):
     # q_km1 = np.zeros((4,))
 
     # Measurement matrix
-    H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
-    H1[0:3,0:3] = np.eye(3)
-    H1[3:,6:] = np.eye(10)
+    H1 = np.zeros([len(P_0) - 3, len(P_0)])  # no measuring of velocity
+    H1[0:3, 0:3] = np.eye(3)
+    H1[3:, 6:] = np.eye(10)
     bad_attitude_measurement_flag = False
     adapt = False
 
-    H2 = np.zeros([9,16])
-    H2[0:3,0:3] = np.eye(3)
-    H2[3:6,6:9] = np.eye(3)
+    H2 = np.zeros([9, 16])
+    H2[0:3, 0:3] = np.eye(3)
+    H2[3:6, 6:9] = np.eye(3)
     H2[6:, 9:12] = np.eye(3)
 
     # Kabsch estimation parameters
@@ -361,13 +365,13 @@ def run(pickle_file, configs, logger):
     params_z = []
     centroids_inB = []
     true_pos_inB = []
-    q_kp1s =[]
+    q_kp1s = []
     metrics = []
     z_s_all = []
     without_correction = []
-    bbox1_dimensions =[]
+    bbox1_dimensions = []
     bbox2_dimensions = []
-    bbox3_dimensions = [2*(p_0 - p1_0)]
+    bbox3_dimensions = [2 * (p_0 - p1_0)]
 
     # ukf weight values
     alpha = configs['alpha']
@@ -381,8 +385,8 @@ def run(pickle_file, configs, logger):
     w_j_m = 0.5 / (lambd + dimL)  # consequent weights for computing the mean
     w_0_c = w_0_m + (1 - alpha ** 2 + beta)  # first weight for computing covariance
     w_j_c = w_j_m
-    tolerance = configs['tolerance']  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
-
+    tolerance = configs[
+        'tolerance']  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
 
     # data gathering
     master_file = pd.DataFrame(columns=configs['master_file_columns'])
@@ -407,22 +411,11 @@ def run(pickle_file, configs, logger):
     pca_pred_diffs = []
     ransac_pred_diffs = []
 
-    metric_boxes = {"pca 0": [0, 0, 0, 0, 0],
-               "ransac 0": [0, 0, 0, 0, 0],
-               "ransac 1": [0, 0, 0, 0, 0],
-               "ransac 2": [0, 0, 0, 0, 0],
-               "ransac 3.1": [0, 0, 0, 0, 0],
-               "pca 3.1": [0, 0, 0, 0, 0],
-               "pca 3.2": [0, 0, 0, 0, 0],
-               "pca 3.3": [0, 0, 0, 0, 0],
-               "ransac 4.1": [0, 0, 0, 0, 0],
-               "ransac 4.2": [0, 0, 0, 0, 0],
-               "pca 4.1": [0, 0, 0, 0, 0],
-               "pred 4.1": [0, 0, 0, 0, 0],
-               "ransac 5": [0, 0, 0, 0, 0],
-               "ransac 6": [0, 0, 0, 0, 0],
-               "ransac 7": [0, 0, 0, 0, 0],
-               "ransac 8": [0, 0, 0, 0, 0]}
+    metric_boxes = {"ransac 0": [0, 0, 0, 0, 0],
+        "ransac 1": [0, 0, 0, 0, 0],
+                    "pca 2": [0, 0, 0, 0, 0],
+                    "prediction 3": [0, 0, 0, 0, 0],
+                    "all wrong 4": [0, 0, 0, 0, 0]}
 
     for i in range(nframes):
 
@@ -534,15 +527,17 @@ def run(pickle_file, configs, logger):
         X_i = XLs[i]
         Y_i = YLs[i]
         Z_i = ZLs[i]
-        
+
         num_points = len(Z_i)
-        #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
+        # logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
 
         # Return bounding box and centroid estimate of bounding box
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         if i == 0:
             q_kp1 = q_ini
-        z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
+        z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i,
+                                                                                                      q_kp1, True,
+                                                                                                      False)
 
         if R_1_2.size == 0:
             ransac_error = True
@@ -575,10 +570,13 @@ def run(pickle_file, configs, logger):
                 true = np.array(true_inB)
                 true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
 
-                thresh = configs['threshold']  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
+                thresh = configs[
+                    'threshold']  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
                 num_sin = configs['number_of_sinusoids']  # number of sinusoids to use to fit the data
-                skip = configs['number_of_skips']  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-                params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+                skip = configs[
+                    'number_of_skips']  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
+                params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip,
+                                                   true[:, 2], params_z)
                 parameters = [params_x, params_y, params_z]
 
                 constants = [0, 0, constant_z]
@@ -593,7 +591,7 @@ def run(pickle_file, configs, logger):
                                                                               1.]]))  # this rotation is to set initial orientation to match with true
             if not ransac_error:
                 z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-                                                                                1.]]))  # this rotation is to set initial orientation to match with true
+                                                                                    1.]]))  # this rotation is to set initial orientation to match with true
             z_q_k = z_q_k_1.copy()
             z_pi_k = z_pi_k_1.copy()
             z_p_k = z_p_k_1.copy()
@@ -618,10 +616,12 @@ def run(pickle_file, configs, logger):
             # then use z_q_k (not perfectly aligned) to get
         associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1,
                                                               R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-        z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+        z_p1_k_1 = associatedBbox_1[:,
+                   0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
         if not ransac_error:
             associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
-            z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+            z_p1_k_2 = associatedBbox_2[:,
+                       0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
 
         if i == 0:
             associatedBbox = associatedBbox_1.copy()
@@ -644,7 +644,6 @@ def run(pickle_file, configs, logger):
                 ransac_prev_diff = nonsense_value
                 ransac_true_diff = nonsense_value
 
-
             pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
             pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
             pca_true_diff = np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))
@@ -656,7 +655,6 @@ def run(pickle_file, configs, logger):
                 pca_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
                 ran_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
 
-
         if i == 0:
             use_measurement = 2  # ransac by default
             short_metric_choice = "ransac 0"
@@ -664,20 +662,29 @@ def run(pickle_file, configs, logger):
             # ml metric
             model = joblib.load(configs['machine_learning_model_file'])
 
-            features = []
+            features = np.array([num_points, num_points - number_of_pointss[i - 1], max(Z_i) - min(Z_i), max(X_i) - min(X_i),
+                        max(Y_i) - min(Y_i), 0, 0, (max(X_i) - min(X_i)) - x_spreads[i - 1],
+                        (max(Y_i) - min(Y_i)) - y_spreads[i - 1], (max(Z_i) - min(Z_i)) - z_spreads[i - 1],
+                       0, 0, 0]).reshape(1, -1)
             prediction = model.predict(features)
-            if prediction == 'ransac':
+            if prediction[0] == 'ransac':
                 use_measurement = 2
                 short_metric_choice = "ransac 1"
-            elif prediction == 'pca':
+                logger.info("ML Metric says ransac")
+            elif prediction[0] == 'pca':
                 use_measurement = 1
                 short_metric_choice = "pca 2"
-            elif prediction == 'prediction':
+                logger.info("ML Metric says pca")
+            elif prediction[0] == 'prediction':
                 use_measurement = 3
                 short_metric_choice = 'prediction 3'
-            else:
+                logger.info("ML Metric says prediction")
+            elif prediction[0] == 'all wrong':
                 use_measurement = 2
-                short_metric_choice = 'all wrong'
+                short_metric_choice = 'all wrong 4'
+                logger.info("ML Metric says all wrong")
+            else:
+                logger.info("Error: choice invalid")
         metric_boxes[short_metric_choice][0] += 1
         short_metric_choices.append(short_metric_choice)
 
@@ -696,7 +703,7 @@ def run(pickle_file, configs, logger):
                     metric_boxes[short_metric_choice][1] += 1
                 else:
                     if pred_true_diff < configs['true_orientation_difference']:
-                        ideal_measurement= 3
+                        ideal_measurement = 3
                         perfect_metric_choice = "pred"
                         metric_boxes[short_metric_choice][3] += 1
                     else:
@@ -705,6 +712,7 @@ def run(pickle_file, configs, logger):
                         ideal_measurement = min_index + 1  # we want from 1 to 3
                         perfect_metric_choice = "all wrong"
                         metric_boxes[short_metric_choice][4] += 1
+        logger.info('Correct choice is ' + str(perfect_metric_choice))
         perfect_metric_choices.append(perfect_metric_choice)
 
         if configs['use_perfect_metric']:
@@ -735,7 +743,7 @@ def run(pickle_file, configs, logger):
             adapt = True
             choice = 'prediction'
 
-                ######################################
+            ######################################
 
         without_correction.append(z_p_k)
         bbox1_dimensions.append([Lm, Wm, Dm])
@@ -746,7 +754,6 @@ def run(pickle_file, configs, logger):
         if curr_t >= (t_start + t_interval):
             z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
             z_p_k = z_p_k_z
-
 
         # find angular velocity from LOS velocities
         if i > 0:
@@ -920,7 +927,9 @@ def run(pickle_file, configs, logger):
         if not ransac_error:
             z_rans.append(np.hstack([z_p_k_2, z_omega_k, associatedBbox_2[:, 0], z_q_k_2]))
         else:
-            z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
+            z_rans.append(np.hstack(
+                [np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]),
+                 np.zeros_like(z_q_k_1)]))
 
         # Append for analysis
         P_s.append(P_k)
@@ -950,7 +959,7 @@ def run(pickle_file, configs, logger):
             ransac_prev_diffs.append(0)
             ransac_pred_diffs.append(0)
             pca_pred_diffs.append(0)
-            ransac_pca_diffs.append(0)             
+            ransac_pca_diffs.append(0)
         else:
             pca_prev_diffs.append(pca_prev_diff)
             ransac_prev_diffs.append(ransac_prev_diff)
@@ -962,7 +971,7 @@ def run(pickle_file, configs, logger):
             y_spread_diffs.append(0)
             z_spread_diffs.append(0)
         else:
-            x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
+            x_spread_diffs.append(x_spreads[i] - x_spreads[i - 1])
             y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
 
@@ -987,18 +996,20 @@ def run(pickle_file, configs, logger):
     master_file['ransac_pred_diff'] = ransac_pred_diffs
     master_file['pca_pred_diff'] = pca_pred_diffs
 
-    master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
+    master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True,
+                       index=False)
 
     ######
     # box assigment experiment
     #####
     assignment_results = pd.DataFrame(metric_boxes)
-    assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
+    assignment_results.to_csv(
+        'assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',',
+        header=True, index=False)
 
     ##############
     # Plot relevant figures
     ############
-
 
     x_s = np.array(x_s)
     x_s = x_s[1:, :]
@@ -1065,7 +1076,8 @@ def run(pickle_file, configs, logger):
         logger.info("Bias before ME: " + str([me_x_after, me_y_after, me_z_after]))
         logger.info("Orientation RMSE: " + str(rmse_q))
 
-    results = [rmse_px, rmse_py, rmse_pz, rmse_omx, rmse_omy, rmse_omz, rmse_vdx, rmse_vdy, rmse_vdz, rmse_x_before, rmse_y_before, rmse_z_before,
+    results = [rmse_px, rmse_py, rmse_pz, rmse_omx, rmse_omy, rmse_omz, rmse_vdx, rmse_vdy, rmse_vdz, rmse_x_before,
+               rmse_y_before, rmse_z_before,
                rmse_x_after, rmse_y_after, rmse_z_after, rmse_q]
 
     return results
