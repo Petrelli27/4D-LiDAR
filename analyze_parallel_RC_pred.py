@@ -241,7 +241,8 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 def rotate_to_within_45_q_true(q_true, q_ini):
     R_true = quat2rotm(q_true)
     R_ini = quat2rotm(q_ini)
-    R_rel = R_ini.T @ R_true # R_true.T @ R_ini
+    R_rel = R_true.T @ R_ini
+    # R_rel = R_ini.T @ R_true # R_true.T @ R_ini
     axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
     angles = []
     Rs = []
@@ -342,7 +343,8 @@ def run(pickle_file, configs, logger):
     q_ini = configs['ini_orientation']
     q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
     # q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
-    q_ini = q_true[0,:] # start with q_true for debug purposes only
+    q_true_ini = q_true.copy() # keep track of q_true for debug purposes
+    # q_ini = q_true[0,:] # start with q_true for debug purposes only
     p_0 = np.array([0., 0., 0.])   # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
     p1_0 = p_0 + np.array([0., 0., 0.])
     x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
@@ -483,13 +485,15 @@ def run(pickle_file, configs, logger):
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         z_q_k_1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
-        if np.rad2deg(rotm_angle_diff(R_1, R_1_2)) < configs['ransac_pca_threshold']:
+        z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
+        if np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_2)) < configs['ransac_pca_threshold']:
             starting_frame = i
-            q_key_measurement = rotm2quat(R_1_2)
+            q_key_measurement = z_q_k_2
             q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
-            print(f"recalibrated on frame {starting_frame}")
+            print(f"pickle {pickle_file} recalibrated q_true based on frame {starting_frame}")
             break
-    
+    # q_ini = q_true[0,:]
+    q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
 
         if rank == 0:
@@ -607,7 +611,7 @@ def run(pickle_file, configs, logger):
         # Return bounding box and centroid estimate of bounding box
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         if i == 0:
-            q_kp1 = q_ini
+            q_kp1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
         if R_1_2.size == 0:
@@ -657,7 +661,7 @@ def run(pickle_file, configs, logger):
         if i == 0:
             z_q_k_1 = rotm2quat(R_1)
             if not ransac_error:
-                z_q_k_2 = rotm2quat(R_1_2)
+                z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
             # z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
             #                                                                   1.]]))  # this rotation is to set initial orientation to match with true
             # if not ransac_error:
@@ -875,7 +879,7 @@ def run(pickle_file, configs, logger):
 
         # Set initial states to measurements
         if i == 0:
-            x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, q_ini])  # state
+            x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])  # state
             P_k = P_0.copy()  # covariance matrix
 
         num_meas = len(z_kp1)
@@ -1034,6 +1038,9 @@ def run(pickle_file, configs, logger):
             x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
             y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
+        if (not RC_flag) and i>200 and RC:
+            RC_flag = True
+            q_true = recalibrate_true_orientation(q_true, z_q_k, i)
 
     # Create final dataframe
     master_file['file_name'] = file_names

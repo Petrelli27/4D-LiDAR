@@ -59,12 +59,12 @@ def quat_angle_diff(q1, q2):
     R1 = quat2rotm(q1)
     R2 = quat2rotm(q2)
     R_diff = R1.T @ R2
-    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    angle_diff = np.arccos(np.clip((np.trace(R_diff) - 1) / 2, -1, 1))
     return abs(angle_diff)
 
 def rotm_angle_diff(R1, R2):
     R_diff = R1.T @ R2
-    angle_diff = np.arccos((np.trace(R_diff) - 1) / 2)
+    angle_diff = np.arccos(np.clip((np.trace(R_diff) - 1) / 2, -1, 1))
     return abs(angle_diff)
 
 def sigmoid(x, a=0.9, k=7):
