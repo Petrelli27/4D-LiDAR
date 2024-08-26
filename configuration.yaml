@@ -15,9 +15,10 @@ master_file_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_erro
 top_level_dir: ''                       # the folder where csv will be saved and where code is
 results_file_name: 'monte_carlo_results_results_ml_8bd.csv'    # name of file containing all results
 assignment_results_file_name: 'assignment_results_ml8bd'      # for the assigment exercise in analyze_parallel.py
-machine_learning_data_file_path: 'combined_output.csv'
+machine_learning_data_file_path: 'combined_output_ml_3class_200.csv'
 machine_learning_data_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
-machine_learning_model_file: 'models/perfect_metric_modelRT.pkl'
+machine_learning_model_file: 'models/perfect_metric_modelRT3class.pkl'
+initial_machine_learning_model_file: 'models/perfect_metric_modelRT200.pkl'
 options: ''                                     # specifying 'p' will enable printing of some messages to console
 
 
@@ -69,7 +70,7 @@ pca_prediction_threshold: 20                   # maximal difference in degrees b
 ransac_pca_threshold: 15                       # maximal difference in degrees between ransac and pca orientations
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
 true_orientation_difference: 15               # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: True                      # for comparison
+use_perfect_metric: False                      # for comparison
 short_metric_thresh: 15                         # threshold angle in degrees for short metric
 
 

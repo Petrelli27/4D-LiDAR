@@ -1,7 +1,7 @@
 import numpy as np
 import yaml
 import os
-import analyze_parallel_ml_metric as analyze_parallel
+import analyze_parallel_RC_pred as analyze_parallel
 import pandas as pd
 import mpi4py.rc
 mpi4py.rc.threads = False
@@ -49,13 +49,15 @@ def run_monte_carlo(config):
 
     for idx in range(start, end):
 
-        if rank == 0:
-            logger.info(f"Processing {idx} of {end - start} iterations")
+        if rank >= 0:
+            logger.info(f"Rank {rank} processing {idx % (end - start)} of {end - start} iterations")
         else:
             pass
         pickle_file = pickle_files[idx]
         results = analyze_parallel.run(pickle_file, config, logger)
         simulation_data.append(results)
+
+    logger.info(f"rank {rank} done all files")
 
     # Synchronize processes
     comm.Barrier()

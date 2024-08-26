@@ -42,7 +42,7 @@ import joblib
 @staticmethod
 def preprocessing_main(X, y):
     random_state = 42
-    train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.20, stratify=y,
+    train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.20, shuffle=False,
                                                         random_state=random_state)
 
     # classes = set(train_y)
@@ -117,6 +117,9 @@ def estimator_tests(configs):
     cluster_data_ini = pd.read_csv(file_path, sep=',', header=0,
                                    names=configs['machine_learning_data_columns'])
 
+    cluster_data_ini = cluster_data_ini[cluster_data_ini['perfect_metric_choice'] != 'first']
+    cluster_data_ini['perfect_metric_choice'] = cluster_data_ini['perfect_metric_choice'].replace('pred', 'prediction')
+
 
     ###############################
     # all options
@@ -148,7 +151,7 @@ def estimator_tests(configs):
     #####################################
     # desired options
     ####################################
-    classifiers = [MLPClassifier(verbose=True)]
+    classifiers = [MLPClassifier(hidden_layer_sizes=(1000, 430, 25),verbose=True)]
 
     target_classes = ['Metric Choice']
     target_labels = ['perfect_metric_choice']
@@ -156,6 +159,8 @@ def estimator_tests(configs):
     data_labels = ['RT']  #
 
     dataset_forms = ['Original']
+
+    data_set_details = '200_big'
 
     # testing
     # model = joblib.load(configs['machine_learning_model_file'])
@@ -309,8 +314,6 @@ def estimator_tests(configs):
                         train_y = datasets[1]
                         test_X = datasets[12]
                         test_y = datasets[13]
-                        print(test_y)
-                        print(test_X)
 
                     print("Training")
                     classifier.fit(train_X, train_y)
@@ -330,7 +333,7 @@ def estimator_tests(configs):
                     print('Class Labels:' + str(class_labels))
                     print('Confusion Matrix: ' + str(mat) + '\n')
                     
-                    joblib.dump(classifier, 'perfect_metric_model' + data_label + '.pkl')
+                    joblib.dump(classifier, 'perfect_metric_model' + data_label + data_set_details + '.pkl')
                     print("saved model")
                     print('\n')
 

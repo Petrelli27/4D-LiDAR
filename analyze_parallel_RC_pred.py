@@ -242,6 +242,7 @@ def rotate_to_within_45_q_true(q_true, q_ini):
     R_true = quat2rotm(q_true)
     R_ini = quat2rotm(q_ini)
     R_rel = R_true.T @ R_ini
+    # R_rel = R_ini.T @ R_true # R_true.T @ R_ini
     axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
     angles = []
     Rs = []
@@ -259,6 +260,36 @@ def rotate_to_within_45_q_true(q_true, q_ini):
     best_index = np.argmin(angles)
     q_ini_adjusted = rotm2quat(Rs[best_index])
     return q_ini_adjusted 
+
+def recalibrate_true_orientation(q_true, q_measurement, recalibrate_frame):
+    q_recalibrate = q_true[recalibrate_frame]
+    R_recalibrate = quat2rotm(q_recalibrate)
+    R_measurement = quat2rotm(q_measurement)
+    R_rel = R_measurement.T @ R_recalibrate
+    axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
+    angles = []
+    Rs = []
+    # find the best 90 degree rotation to match q_recalibrate and q_measurement
+    for x in axes_candidates:
+        for y in axes_candidates:
+            if np.dot(x, y) == 0:
+                z = np.cross(x, y)
+                R_candidate = np.vstack([x,y,z])
+                R_net = R_rel @ R_candidate
+                theta = np.arccos(0.5*(np.trace(R_net)-1))
+                angles.append(theta)
+                Rs.append(R_candidate)
+            else:
+                continue
+    best_index = np.argmin(angles)
+    R_offset = Rs[best_index]
+    q_true_recalibrated = q_true.copy()
+    for i, q in enumerate(q_true):
+        R_true_old = quat2rotm(q)
+        R_true_new = R_true_old @ R_offset
+        q_new = rotm2quat(R_true_new)
+        q_true_recalibrated[i] = q_new
+    return q_true_recalibrated
 
 def run(pickle_file, configs, logger):
 
@@ -289,6 +320,7 @@ def run(pickle_file, configs, logger):
     omega_L = data['omega_L']
     dt = data['dt']
     initial_angle_rotation = data['angle_0']
+    RC_flag = False
 
     # Estimation Loop
     XLs = []  # store point cloud x in L
@@ -310,7 +342,9 @@ def run(pickle_file, configs, logger):
     omega_true = omega_L
     q_ini = configs['ini_orientation']
     q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
-    q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
+    # q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
+    q_true_ini = q_true.copy() # keep track of q_true for debug purposes
+    # q_ini = q_true[0,:] # start with q_true for debug purposes only
     p_0 = np.array([0., 0., 0.])   # these should be arbitrary, first position and vertex is according to first measurement, just to get num_states
     p1_0 = p_0 + np.array([0., 0., 0.])
     x_0 = np.hstack([p_0, vT_0, omega_0, p1_0, q_ini])
@@ -438,11 +472,39 @@ def run(pickle_file, configs, logger):
                "ransac 6": [0, 0, 0, 0, 0],
                "ransac 7": [0, 0, 0, 0, 0],
                "ransac 8": [0, 0, 0, 0, 0]}
+    
+    for i in range(nframes): 
+        PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
+        # find bounding box from points
+        XLs.append(PLs[i][:, 0])
+        YLs.append(PLs[i][:, 1])
+        ZLs.append(PLs[i][:, 2])
+        X_i = XLs[i]
+        Y_i = YLs[i]
+        Z_i = ZLs[i]
+        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        z_q_k_1 = rotm2quat(R_1)
+        z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
+        if R_1_2.size == 0:
+            ransac_error = True
+        else:
+            ransac_error = False
 
+        if not ransac_error:
+            z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
+            if np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_2)) < configs['ransac_pca_threshold']:
+                starting_frame = i
+                q_key_measurement = z_q_k_2
+                q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
+                #logger.info(f"pickle {pickle_file} recalibrated q_true based on frame {starting_frame}")
+                break
+    # q_ini = q_true[0,:]
+    q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
 
         if rank == 0:
-            logger.info(f"Iteration {i} of {nframes}")
+            pass
+            #logger.info(f"Iteration {i} of {nframes}")
         else:
             pass
 
@@ -556,7 +618,7 @@ def run(pickle_file, configs, logger):
         # Return bounding box and centroid estimate of bounding box
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         if i == 0:
-            q_kp1 = q_ini
+            q_kp1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
         if R_1_2.size == 0:
@@ -604,11 +666,14 @@ def run(pickle_file, configs, logger):
         # Orientation association
         # R_1 is obtained from bounding box
         if i == 0:
-            z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-                                                                              1.]]))  # this rotation is to set initial orientation to match with true
+            z_q_k_1 = rotm2quat(R_1)
             if not ransac_error:
-                z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-                                                                                1.]]))  # this rotation is to set initial orientation to match with true
+                z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
+            # z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+            #                                                                   1.]]))  # this rotation is to set initial orientation to match with true
+            # if not ransac_error:
+            #     z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
+            #                                                                     1.]]))  # this rotation is to set initial orientation to match with true
             z_q_k = z_q_k_1.copy()
             z_pi_k = z_pi_k_1.copy()
             z_p_k = z_p_k_1.copy()
@@ -718,8 +783,20 @@ def run(pickle_file, configs, logger):
                         values = [pca_true_diff, ransac_true_diff, pred_true_diff]
                         min_index, min_value = min(enumerate(values), key=lambda x: x[1])
                         ideal_measurement = min_index + 1  # we want from 1 to 3
-                        perfect_metric_choice = "all wrong"
-                        metric_boxes[short_metric_choice][4] += 1
+                        if ideal_measurement == 1:
+                            perfect_metric_choice = "pca"
+                            metric_boxes[short_metric_choice][2] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        elif ideal_measurement == 2:
+                            perfect_metric_choice = "ransac"
+                            metric_boxes[short_metric_choice][1] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        elif ideal_measurement == 3:
+                            perfect_metric_choice = "prediction"
+                            metric_boxes[short_metric_choice][3] += 1
+                            metric_boxes[short_metric_choice][4] += 1
+                        else:
+                            perfect_metric_choice = "error"
         perfect_metric_choices.append(perfect_metric_choice)
 
         if configs['use_perfect_metric']:
@@ -821,7 +898,7 @@ def run(pickle_file, configs, logger):
 
         # Set initial states to measurements
         if i == 0:
-            x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, q_ini])  # state
+            x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])  # state
             P_k = P_0.copy()  # covariance matrix
 
         num_meas = len(z_kp1)
@@ -980,6 +1057,9 @@ def run(pickle_file, configs, logger):
             x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
             y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
+        if (not RC_flag) and i > configs['start'] and RC:
+            RC_flag = True
+            q_true = recalibrate_true_orientation(q_true, z_q_k, i)
 
     # Create final dataframe
     master_file['file_name'] = file_names
