@@ -469,7 +469,7 @@ def run(pickle_file, configs, logger):
     pca_pred_diffs = []
     ransac_pred_diffs = []
 
-    metric_boxes = {"ransac 0": [0, 0, 0, 0, 0],
+    metric_boxes = {"pca 0": [0, 0, 0, 0, 0],
         "ransac 1": [0, 0, 0, 0, 0],
                     "pca 2": [0, 0, 0, 0, 0],
                     "prediction 3": [0, 0, 0, 0, 0],
@@ -505,7 +505,7 @@ def run(pickle_file, configs, logger):
     for i in range(nframes):
 
         if rank == 0:
-            logger.info(f"Iteration {i} of {nframes}")
+            pass #logger.info(f"Iteration {i} of {nframes}")
         else:
             pass
 
@@ -737,8 +737,8 @@ def run(pickle_file, configs, logger):
             ran_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
 
         if i == 0:
-            use_measurement = 2  # ransac by default
-            short_metric_choice = "ransac 0"
+            use_measurement = 1  # ransac by default
+            short_metric_choice = "pca 0"
         elif i > configs['start']:
             RC = ransac_pca_diff < short_metric_thresh
 
@@ -748,8 +748,12 @@ def run(pickle_file, configs, logger):
             features = np.array([[pca_prev_diff, ransac_prev_diff, ransac_pca_diff, ransac_pred_diff, pca_pred_diff]])
             prediction = model.predict(features)
             if prediction[0] == 'ransac':
-                use_measurement = 2
-                short_metric_choice = "ransac 1"
+                if ransac_error:
+                    use_measurement = 2
+                    short_metric_choice = "pca 2"
+                else:
+                    use_measurement = 2
+                    short_metric_choice = "ransac 1"
                 #logger.info("ML Metric says ransac")
             elif prediction[0] == 'pca':
                 use_measurement = 1
@@ -772,8 +776,12 @@ def run(pickle_file, configs, logger):
             features = np.array([[pca_prev_diff, ransac_prev_diff, ransac_pca_diff, ransac_pred_diff, pca_pred_diff]])
             prediction = model.predict(features)
             if prediction[0] == 'ransac':
-                use_measurement = 2
-                short_metric_choice = "ransac 1"
+                if ransac_error:
+                    use_measurement = 1
+                    short_metric_choice = "pca 2"
+                else:
+                    use_measurement = 2
+                    short_metric_choice = "ransac 1"
                 #logger.info("ML Metric says ransac")
             elif prediction[0] == 'pca':
                 use_measurement = 1
@@ -793,13 +801,18 @@ def run(pickle_file, configs, logger):
         short_metric_choices.append(short_metric_choice)
 
         if i == 0:
-            ideal_measurement = 2
+            ideal_measurement = 1
             perfect_metric_choice = 'first'
         else:
             if ransac_true_diff < configs['true_orientation_difference']:
-                ideal_measurement = 2
-                perfect_metric_choice = "ransac"
-                metric_boxes[short_metric_choice][2] += 1
+                if ransac_error:
+                    ideal_measurement = 1
+                    perfect_metric_choice = 'pca'
+                    metric_boxes[short_metric_choice][1] += 1
+                else:
+                    ideal_measurement = 2
+                    perfect_metric_choice = "ransac"
+                    metric_boxes[short_metric_choice][2] += 1
             else:
                 if pca_true_diff < configs['true_orientation_difference']:
                     ideal_measurement = 1
@@ -819,9 +832,14 @@ def run(pickle_file, configs, logger):
                             metric_boxes[short_metric_choice][2] += 1
                             metric_boxes[short_metric_choice][4] += 1
                         elif ideal_measurement == 2:
-                            perfect_metric_choice = "ransac"
-                            metric_boxes[short_metric_choice][1] += 1
-                            metric_boxes[short_metric_choice][4] += 1
+                            if ransac_error:
+                                perfect_metric_choice = 'pca'
+                                metric_boxes[short_metric_choice][2] += 1
+                                metric_boxes[short_metric_choice][4] += 1
+                            else:
+                                perfect_metric_choice = "ransac"
+                                metric_boxes[short_metric_choice][1] += 1
+                                metric_boxes[short_metric_choice][4] += 1
                         elif ideal_measurement == 3:
                             perfect_metric_choice = "prediction"
                             metric_boxes[short_metric_choice][3] += 1
@@ -834,14 +852,24 @@ def run(pickle_file, configs, logger):
         if configs['use_perfect_metric']:
             use_measurement = ideal_measurement
         if use_measurement == 2:
-            # use ransac
-            z_q_k = z_q_k_2.copy()
-            z_pi_k = z_pi_k_2.copy()
-            z_p_k = z_p_k_2.copy()
-            z_p1_k = associatedBbox_2[:, 0]
-            associatedBbox = associatedBbox_2.copy()
-            adapt = False
-            choice = 'ransac'
+            try:
+                # use ransac
+                z_q_k = z_q_k_2.copy()
+                z_pi_k = z_pi_k_2.copy()
+                z_p_k = z_p_k_2.copy()
+                z_p1_k = associatedBbox_2[:, 0]
+                associatedBbox = associatedBbox_2.copy()
+                adapt = False
+                choice = 'ransac'
+            except UnboundLocalError:
+                # use pca
+                z_q_k = z_q_k_1.copy()
+                z_pi_k = z_pi_k_1.copy()
+                z_p_k = z_p_k_1.copy()
+                z_p1_k = associatedBbox_1[:, 0]
+                associatedBbox = associatedBbox_1.copy()
+                adapt = False
+                choice = 'pca'
         elif use_measurement == 1:
             # use pca
             z_q_k = z_q_k_1.copy()

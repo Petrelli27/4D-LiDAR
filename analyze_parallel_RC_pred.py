@@ -783,33 +783,33 @@ def run(pickle_file, configs, logger):
                         values = [pca_true_diff, ransac_true_diff, pred_true_diff]
                         min_index, min_value = min(enumerate(values), key=lambda x: x[1])
                         ideal_measurement = min_index + 1  # we want from 1 to 3
-                        if ideal_measurement == 1:
-                            perfect_metric_choice = "pca"
-                            metric_boxes[short_metric_choice][2] += 1
-                            metric_boxes[short_metric_choice][4] += 1
-                        elif ideal_measurement == 2:
-                            perfect_metric_choice = "ransac"
-                            metric_boxes[short_metric_choice][1] += 1
-                            metric_boxes[short_metric_choice][4] += 1
-                        elif ideal_measurement == 3:
-                            perfect_metric_choice = "prediction"
-                            metric_boxes[short_metric_choice][3] += 1
-                            metric_boxes[short_metric_choice][4] += 1
-                        else:
-                            perfect_metric_choice = "error"
+                        perfect_metric_choice = "all wrong"
+                        metric_boxes[short_metric_choice][4] += 1
         perfect_metric_choices.append(perfect_metric_choice)
 
         if configs['use_perfect_metric']:
             use_measurement = ideal_measurement
+
+        
         if use_measurement == 2:
-            # use ransac
-            z_q_k = z_q_k_2.copy()
-            z_pi_k = z_pi_k_2.copy()
-            z_p_k = z_p_k_2.copy()
-            z_p1_k = associatedBbox_2[:, 0]
-            associatedBbox = associatedBbox_2.copy()
-            adapt = False
-            choice = 'ransac'
+            try:
+                # use ransac
+                z_q_k = z_q_k_2.copy()
+                z_pi_k = z_pi_k_2.copy()
+                z_p_k = z_p_k_2.copy()
+                z_p1_k = associatedBbox_2[:, 0]
+                associatedBbox = associatedBbox_2.copy()
+                adapt = False
+                choice = 'ransac'
+            except UnboundLocalError:
+                # use pca
+                z_q_k = z_q_k_1.copy()
+                z_pi_k = z_pi_k_1.copy()
+                z_p_k = z_p_k_1.copy()
+                z_p1_k = associatedBbox_1[:, 0]
+                associatedBbox = associatedBbox_1.copy()
+                adapt = False
+                choice = 'pca'
         elif use_measurement == 1:
             # use pca
             z_q_k = z_q_k_1.copy()
@@ -1057,7 +1057,7 @@ def run(pickle_file, configs, logger):
             x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
             y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
-        if (not RC_flag) and i > configs['start'] and RC:
+        if (not RC_flag) and i>configs['start'] and RC:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
 
