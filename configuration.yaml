@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-pickle_directory_name: 'results_8 storage'           # the directory where all the pickle files are stored
+pickle_directory_name: 'results_8_bad'           # the directory where all the pickle files are stored
 
                                                 # the various columns in the final csv to be saved, description:
                                                 # true_xxx: number of times xxx should have been chosen
@@ -13,8 +13,8 @@ pickle_directory_name: 'results_8 storage'           # the directory where all t
 results_column_names: ['rmse_px', 'rmse_py', 'rmse_pz', 'rmse_omx', 'rmse_omy', 'rmse_omz', 'rmse_vdx', 'rmse_vdy', 'rmse_vdz', 'rmse_x_before', 'rmse_y_before', 'rmse_z_before', 'rmse_x_after', 'rmse_y_after', 'rmse_z_after', 'rmse_q']
 master_file_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 top_level_dir: ''                       # the folder where csv will be saved and where code is
-results_file_name: 'monte_carlo_results_results_ml_8bd.csv'    # name of file containing all results
-assignment_results_file_name: 'assignment_results_ml8bd'      # for the assigment exercise in analyze_parallel.py
+results_file_name: 'monte_carlo_results_results_8.csv'    # name of file containing all results
+assignment_results_file_name: 'assignment_results_8'      # for the assigment exercise in analyze_parallel.py
 machine_learning_data_file_path: 'combined_output.csv'
 machine_learning_data_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 machine_learning_model_file: 'models/perfect_metric_modelRT.pkl'
@@ -68,9 +68,9 @@ ransac_prediction_threshold: 20                # maximal difference in degrees b
 pca_prediction_threshold: 20                   # maximal difference in degrees between pca and predicted orientations
 ransac_pca_threshold: 15                       # maximal difference in degrees between ransac and pca orientations
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
-true_orientation_difference: 15               # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: True                      # for comparison
-short_metric_thresh: 15                         # threshold angle in degrees for short metric
+true_orientation_difference: 15                # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
+use_perfect_metric: False                      # for comparison
+short_metric_thresh: 15                        # threshold angle in degrees for short metric
 
 
 ######################################

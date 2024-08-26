@@ -94,13 +94,8 @@ def get_initial_conditions(conditions_count=100):
         mean_motion = np.sqrt(mu / r**3)
         r0 = np.array([px, py, pz])
         rdot0 = np.array([vx, vy, vz])
-    
-        if i==0:
-            nframes = 4000
-        elif i==1:
-            nframes = 4000
-        else:
-            nframes = 4000
+
+        nframes = 4000
 
         _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion)
         if max(d) > 500:
@@ -177,7 +172,7 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    num_tests = 4
+    num_tests = 8
     try:
         initial_conditions_list = list(get_initial_conditions(num_tests))
         total_conditions = len(initial_conditions_list)

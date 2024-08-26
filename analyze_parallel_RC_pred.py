@@ -977,7 +977,7 @@ def run(pickle_file, configs, logger):
             x_p_k = x_k[0:3]
             x_p1_k = x_k[9:12]
             x_q_k = x_k[12:16]
-            rotation_errors.append(quat_angle_diff(x_q_k, q_true[i, :]))
+            rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
             Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
             bbox3_dimensions.append([Le, We, De])
 
@@ -1062,6 +1062,7 @@ def run(pickle_file, configs, logger):
     master_file['ransac_pca_diff'] = ransac_pca_diffs
     master_file['ransac_pred_diff'] = ransac_pred_diffs
     master_file['pca_pred_diff'] = pca_pred_diffs
+    master_file['estimate_error'] = rotation_errors
 
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 

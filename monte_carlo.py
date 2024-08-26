@@ -1,10 +1,10 @@
 import numpy as np
 import yaml
 import os
-import analyze_parallel_ml_metric as analyze_parallel
+import analyze_parallel_RC_pred as analyze_parallel
 import pandas as pd
-import mpi4py.rc
-mpi4py.rc.threads = False
+# import mpi4py.rc
+# mpi4py.rc.threads = False
 from mpi4py import MPI
 import logging
 import random
