@@ -51,7 +51,7 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
     debris.apply_transform(Rot_4by4)
     axis = Rot_L_to_B @ (omega_L / np.linalg.norm(omega_L))
     angle_0_rad = np.deg2rad(angle_0)
-    angle = np.linalg.norm(omega_L * dt * i)
+    angle = np.linalg.norm(omega_L)* dt * i
     debris.apply_transform(trimesh.transformations.rotation_matrix(angle_0_rad + angle, axis))
 
     debris.apply_transform(trimesh.transformations.translation_matrix(debris_pos_B))
@@ -64,7 +64,7 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
 
     return X, Y, Z, P, V_los, Rot_L_to_B
 
-def get_initial_conditions(conditions_count=100):
+def get_initial_conditions(conditions_count=40):
     starts_dict = []
     mu = 398600.5
     i = 0

@@ -74,9 +74,9 @@ def boundingbox3D_RANSAC(x, y, z, q_kp1, return_evec=False, visualize=False):
     pcd.points = o3d.utility.Vector3dVector(points)
     # Apply RANSAC to segment a plane
     # Parameters
-    distance_threshold = 0.1  # Adjust based on your data
+    distance_threshold = 0.2 # Adjust based on your data
     ransac_n = 3
-    num_iterations = 1000
+    num_iterations = 500
     min_inliers = 3  # Minimum number of inliers to consider a plane valid
     # Container for all planes
     all_planes = []
@@ -138,7 +138,7 @@ def boundingbox3D_RANSAC(x, y, z, q_kp1, return_evec=False, visualize=False):
         all_planes.append(remaining_points)
 
     if visualize:
-        o3d.visualization.draw_geometries(all_planes)
+        o3d.visualization.draw_geometries(all_planes,width=1280,height=720)
 
     # Pair the vectors with their corresponding values
     paired_list = list(zip(rankings, normal_vecs))
@@ -150,23 +150,23 @@ def boundingbox3D_RANSAC(x, y, z, q_kp1, return_evec=False, visualize=False):
     # try using predicted orientation to sort
     ###########
 
-    R = quat2rotm(q_kp1)
-    new_ranking = np.zeros((len(R), len(normal_vecs)))
-    for idx, vec in enumerate(normal_vecs):
-        for jdx, r_col in enumerate(R.T):
-            new_ranking[jdx, idx] = custom_arccos(np.dot(r_col, vec))
+    # R = quat2rotm(q_kp1)
+    # new_ranking = np.zeros((len(R), len(normal_vecs)))
+    # for idx, vec in enumerate(normal_vecs):
+    #     for jdx, r_col in enumerate(R.T):
+    #         new_ranking[jdx, idx] = custom_arccos(np.dot(r_col, vec))
 
 
-    min_indices = np.argmin(new_ranking, axis=1)
-    min_values = new_ranking[np.arange(new_ranking.shape[0]), min_indices]
-    min_val_indices = np.argsort(min_values)
-    min_indices_sorted = min_indices[min_val_indices]
-    # sorted_vectors = normal_vecs[min_indices_sorted, :]
-    sorted_vectors = normal_vecs[min_indices_sorted]
+    # min_indices = np.argmin(new_ranking, axis=1)
+    # min_values = new_ranking[np.arange(new_ranking.shape[0]), min_indices]
+    # min_val_indices = np.argsort(min_values)
+    # min_indices_sorted = min_indices[min_val_indices]
+    # sorted_vectors = normal_vecs[min_indices_sorted]
+
     # Unzip the sorted pairs
-    # sorted_values, sorted_vectors = zip(*sorted_pairs)
-    # sorted_vectors = np.array(sorted_vectors)
-    # sorted_vectors = normal_vecs
+    sorted_values, sorted_vectors = zip(*sorted_pairs)
+    sorted_vectors = np.array(sorted_vectors)
+    sorted_vectors = normal_vecs
 
     # update points
     points = all_points[1:, :]  # one to get rid of zero zero zero from beginning
