@@ -76,7 +76,7 @@ def boundingbox3D_RANSAC(x, y, z, q_kp1, return_evec=False, visualize=False):
     # Parameters
     distance_threshold = 0.1  # Adjust based on your data
     ransac_n = 3
-    num_iterations = 1000
+    num_iterations = 500
     min_inliers = 3  # Minimum number of inliers to consider a plane valid
     # Container for all planes
     all_planes = []
