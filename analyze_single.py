@@ -262,6 +262,7 @@ def rotate_to_within_45_q_true(q_true, q_ini):
     return q_ini_adjusted 
 
 def recalibrate_true_orientation(q_true, q_measurement, recalibrate_frame):
+    # return q_true # doesn't do anything, for debugging only
     q_recalibrate = q_true[recalibrate_frame]
     R_recalibrate = quat2rotm(q_recalibrate)
     R_measurement = quat2rotm(q_measurement)
@@ -467,16 +468,14 @@ def run(pickle_file, configs, logger):
                "ransac 6": [0, 0, 0, 0, 0],
                "ransac 7": [0, 0, 0, 0, 0],
                "ransac 8": [0, 0, 0, 0, 0]}
-    
+    tspan = tspan = np.arange(0, dt*nframes, dt)
+    num_points = np.zeros((nframes))
     for i in range(nframes): 
-        PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
+        PL=((Rot_L_to_B[i].T @ (PBs[i]).T).T)
         # find bounding box from points
-        XLs.append(PLs[i][:, 0])
-        YLs.append(PLs[i][:, 1])
-        ZLs.append(PLs[i][:, 2])
-        X_i = XLs[i]
-        Y_i = YLs[i]
-        Z_i = ZLs[i]
+        X_i = PL[:,0]
+        Y_i = PL[:,1]
+        Z_i = PL[:,2]
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         z_q_k_1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
@@ -484,14 +483,14 @@ def run(pickle_file, configs, logger):
         if np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_2)) < configs['ransac_pca_threshold']:
             starting_frame = i
             q_key_measurement = z_q_k_2
-            # q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
+            q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
             print(f"pickle {pickle_file} recalibrated q_true based on frame {starting_frame}")
             break
     # q_ini = q_true[0,:]
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
-        # visualize_flag = i<100 and i%5 == 0
-        visualize_flag = False
+        visualize_flag = i>100 and i<500 and i%5 == 0
+        # visualize_flag = False
         print(f"Iteration {i}")
         # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
         if i > 0:
@@ -597,7 +596,7 @@ def run(pickle_file, configs, logger):
         Y_i = YLs[i]
         Z_i = ZLs[i]
         
-        num_points = len(Z_i)
+        num_points[i] = len(X_i)
         #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
 
         # Return bounding box and centroid estimate of bounding box
@@ -1191,7 +1190,7 @@ def run(pickle_file, configs, logger):
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
         if (not RC_flag) and i>200 and RC:
             RC_flag = True
-            # q_true = recalibrate_true_orientation(q_true, z_q_k, i)
+            q_true = recalibrate_true_orientation(q_true, z_q_k, i)
 
     # Create final dataframe
     master_file['file_name'] = file_names
@@ -1226,7 +1225,10 @@ def run(pickle_file, configs, logger):
     ##############
     # Plot relevant figures
     ############
-
+    fig = plt.figure()
+    ay = fig.add_subplot(111)
+    ay.plot(tspan, num_points)
+    plt.show()
 
     x_s = np.array(x_s)
     x_s = x_s[1:, :]
