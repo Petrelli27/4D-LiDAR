@@ -42,6 +42,8 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
 
     debris = trimesh.load(debris_file)
     Rot_L_to_B = getR(x, y, z)
+    x_prev, y_prev, z_prev = debris_pos[i-1] if i>0 else debris_pos[i]
+    Rot_L_to_B_prev = getR(x_prev, y_prev, z_prev)
     debris_pos_B = Rot_L_to_B @ debris_pos[i]
     debris_vel_B = Rot_L_to_B @ debris_vel[i]
                 
@@ -57,7 +59,7 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
     debris.apply_transform(trimesh.transformations.translation_matrix(debris_pos_B))
     
     omega_B = Rot_L_to_B @ omega_L
-    X, Y, Z, V_los = lidarScan3.point_cloud(np.array([0,0,0]), h_resolution, v_resolution, h_range, v_range, debris, debris_pos_B, debris_vel_B, omega_B)
+    X, Y, Z, V_los = lidarScan3.point_cloud(np.array([0,0,0]), h_resolution, v_resolution, h_range, v_range, debris, debris_pos_B, debris_vel_B, omega_B, Rot_L_to_B, Rot_L_to_B_prev, dt)
     P = np.vstack([X, Y, Z]).T
     # visualize_trimesh(debris, np.column_stack((X,Y,Z)))
     print(f"Process {rank} processing frame: {i}")

@@ -9,7 +9,7 @@ import numpy as np
 import trimesh
 import lidarNoise  # Assuming you still want to use your custom noise function
 
-def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_range, sat_mesh, sat_pos, v_rel, omega):
+def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_range, sat_mesh, sat_pos, v_rel, omega, Rot_L_to_B, Rot_L_to_B_prev, dt):
     # Generate rays
     theta_r = np.deg2rad(np.linspace(-h_range/2, h_range/2, horizontal_resolution))
     phi_r = np.deg2rad(np.linspace(-v_range/2, v_range/2, vertical_resolution))
@@ -38,7 +38,16 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
     # Calculate velocities
     r = useful_rel_locations - sat_pos
     u_los = -useful_rel_locations / np.linalg.norm(useful_rel_locations, axis=1)[:, np.newaxis]
-    v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel, u_los.T)
+
+    # calculate relative rotation of L w.r.t. B
+    Rlb = Rot_L_to_B_prev.T @ Rot_L_to_B  # shorthand
+    angle_B_to_B = np.arccos((np.trace(Rlb) - 1)/2)
+    axis_B_to_B = 1./(2*np.sin(angle_B_to_B))*np.array([Rlb[2,1]-Rlb[1,2],Rlb[0,2]-Rlb[2,0],Rlb[1,0]-Rlb[0,1]])
+    axis_B_to_B = np.transpose(Rot_L_to_B) @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
+    omega_L_to_B = (angle_B_to_B * axis_B_to_B)/dt
+
+    v_rel_B = v_rel + np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
+    v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel_B, u_los.T)
     v_los_v = u_los * v_los_s[:, np.newaxis]
 
     # Add noise to lidar scan results
