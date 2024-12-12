@@ -16,8 +16,9 @@ from scipy.signal import find_peaks
 import mpi4py.rc
 mpi4py.rc.threads = False
 from mpi4py import MPI
-
+import yaml
 import random
+import logging
 
 random.seed(42)
 np.random.seed(42)
@@ -503,8 +504,8 @@ def run(pickle_file, configs, logger):
     for i in range(nframes):
 
         if rank == 0:
-            pass
-            #logger.info(f"Iteration {i} of {nframes}")
+            #pass
+            logger.info(f"Iteration {i} of {nframes}")
         else:
             pass
 
@@ -1164,3 +1165,33 @@ def run(pickle_file, configs, logger):
                rmse_x_after, rmse_y_after, rmse_z_after, rmse_q]
 
     return results
+
+
+def run_single(config):
+    # Configure logging only for the process with rank 0
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
+    # get all file names
+    pickle_files = os.listdir(config['pickle_directory_name'])
+
+    simulation_data = []
+    for file_name in os.listdir(config['pickle_directory_name']):
+        results = run(file_name, config, logger)
+        simulation_data.append(results)
+        results_as_df = pd.DataFrame(simulation_data)
+        results_as_df['pickle_file'] = file_name
+
+        # save as csv
+        results_as_df.to_csv(os.path.join(config['top_level_dir'], config['results_file_name']), sep=',', header=True,
+                             index=False)
+    else:
+        pass
+
+    return
+
+
+with open('configuration.yaml', 'r') as f:
+    configs = yaml.safe_load(f)
+
+run_single(configs)
