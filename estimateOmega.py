@@ -4,7 +4,7 @@ import random
 random.seed(42)
 np.random.seed(42)
 
-def estimate_LLS(x, y, z, c, v_c, v):
+def estimate_LLS(x, y, z, c, v_c, v, v_bl):
     """
     x, y, z are 1xn numpy arrays
     c is the estimated debris center of mass
@@ -15,7 +15,7 @@ def estimate_LLS(x, y, z, c, v_c, v):
     r = p-c
     u_los = -(p)/(np.linalg.norm(p, axis=1)[:,np.newaxis])
     # b = v - np.dot(v_c, u_los) # this is what we want, but not how np.dot() dehaves
-    b = v - u_los@v_c # dot product each row of v_c and u_los
+    b = v - u_los@(v_c + v_bl) # dot product each row of v_c and u_los
     A = np.zeros(np.shape(p))
     for i, Arow in enumerate(A):
         A[i] = np.cross(r[i], u_los[i])

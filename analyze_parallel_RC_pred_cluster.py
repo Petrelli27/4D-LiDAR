@@ -836,15 +836,17 @@ def run(pickle_file, configs, logger):
             z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
             z_p_k = z_p_k_z
 
+        # 2. Rotation of B Frame
+        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+        B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
 
         # find angular velocity from LOS velocities
         if i > 0:
             # 1. Linear Least Squares
-            omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i])
+            omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i], B_v_BL)
             omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
-        # 2. Rotation of B Frame
-        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+
 
         # 3. Kabsch
         ################ to use Kabsch you need i > 0, to wait for state initializations?
