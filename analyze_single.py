@@ -470,29 +470,32 @@ def run(pickle_file, configs, logger):
                "ransac 8": [0, 0, 0, 0, 0]}
     
     for i in range(nframes): 
-        PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
+        PL=((Rot_L_to_B[i].T @ (PBs[i]).T).T)
         # find bounding box from points
-        XLs.append(PLs[i][:, 0])
-        YLs.append(PLs[i][:, 1])
-        ZLs.append(PLs[i][:, 2])
-        X_i = XLs[i]
-        Y_i = YLs[i]
-        Z_i = ZLs[i]
+        X_i = PL[:,0]
+        Y_i = PL[:,1]
+        Z_i = PL[:,2]
         z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         z_q_k_1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
-        z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
-        if np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_2)) < configs['ransac_pca_threshold']:
-            starting_frame = i
-            q_key_measurement = z_q_k_2
-            q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
-            print(f"pickle {pickle_file} recalibrated q_true based on frame {starting_frame}")
-            break
+        if R_1_2.size == 0:
+            ransac_error = True
+        else:
+            ransac_error = False
+
+        if not ransac_error:
+            z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
+            if np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_2)) < configs['ransac_pca_threshold']:
+                starting_frame = i
+                q_key_measurement = z_q_k_2
+                q_true = recalibrate_true_orientation(q_true, q_key_measurement, starting_frame)
+                #logger.info(f"pickle {pickle_file} recalibrated q_true based on frame {starting_frame}")
+                break
     # q_ini = q_true[0,:]
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
-        visualize_flag = i>=0 and i%20 == 0
-        # visualize_flag = False
+        # visualize_flag = i>=0 and i%20 == 0
+        visualize_flag = False
         print(f"Iteration {i}")
         # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
         if i > 0:
@@ -776,14 +779,24 @@ def run(pickle_file, configs, logger):
         if configs['use_perfect_metric']:
             use_measurement = ideal_measurement
         if use_measurement == 2:
-            # use ransac
-            z_q_k = z_q_k_2.copy()
-            z_pi_k = z_pi_k_2.copy()
-            z_p_k = z_p_k_2.copy()
-            z_p1_k = associatedBbox_2[:, 0]
-            associatedBbox = associatedBbox_2.copy()
-            adapt = False
-            choice = 'ransac'
+            try:
+                # use ransac
+                z_q_k = z_q_k_2.copy()
+                z_pi_k = z_pi_k_2.copy()
+                z_p_k = z_p_k_2.copy()
+                z_p1_k = associatedBbox_2[:, 0]
+                associatedBbox = associatedBbox_2.copy()
+                adapt = False
+                choice = 'ransac'
+            except UnboundLocalError:
+                # use pca
+                z_q_k = z_q_k_1.copy()
+                z_pi_k = z_pi_k_1.copy()
+                z_p_k = z_p_k_1.copy()
+                z_p1_k = associatedBbox_1[:, 0]
+                associatedBbox = associatedBbox_1.copy()
+                adapt = False
+                choice = 'pca'
         elif use_measurement == 1:
             # use pca
             z_q_k = z_q_k_1.copy()
@@ -813,15 +826,17 @@ def run(pickle_file, configs, logger):
             z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
             z_p_k = z_p_k_z
 
+        # 2. Rotation of B Frame
+        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+        B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
 
         # find angular velocity from LOS velocities
         if i > 0:
             # 1. Linear Least Squares
-            omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i])
+            omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i], B_v_BL)
             omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
-        # 2. Rotation of B Frame
-        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+
 
         # 3. Kabsch
         ################ to use Kabsch you need i > 0, to wait for state initializations?
@@ -1190,7 +1205,7 @@ def run(pickle_file, configs, logger):
             x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
             y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
             z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
-        if (not RC_flag) and i>200 and RC:
+        if (not RC_flag) and i>configs['start'] and RC:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
 
@@ -1216,11 +1231,22 @@ def run(pickle_file, configs, logger):
     master_file['pca_pred_diff'] = pca_pred_diffs
     master_file['estimate_error'] = rotation_errors
 
+    if not os.path.exists('full_results'):
+        os.makedirs('full_results')
+    else:
+        pass
+
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ######
     # box assigment experiment
     #####
+
+    if not os.path.exists('assignment_results'):
+        os.makedirs('assignment_results')
+    else:
+        pass
+
     assignment_results = pd.DataFrame(metric_boxes)
     assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
@@ -1229,8 +1255,21 @@ def run(pickle_file, configs, logger):
     ############
 
 
+    m1 = len(x_s)
+
+    z_s = padding_nan(z_s)
     x_s = np.array(x_s)
     x_s = x_s[1:, :]
+    q_true = np.array(q_true)
+    original_pos_meas = np.array(original_pos_meas)
+    centroids_inB = np.array(centroids_inB)
+    true_pos_inB = np.array(true_pos_inB)
+    z_pcas = np.array(z_pcas)
+    z_rans = np.array(z_rans)
+    without_correction = np.array(without_correction)
+    bbox1_dimensions = np.array(bbox1_dimensions)
+    bbox2_dimensions = np.array(bbox2_dimensions)
+    bbox3_dimensions = np.array(bbox3_dimensions)
 
     #####################
     # errors over last 'error_start' seconds
@@ -1262,7 +1301,7 @@ def run(pickle_file, configs, logger):
     me_vdz = np.mean(x_s[start_time_2:, 5] - debris_vel[start_time_2:nframes, 2])
 
     # orientation rmse
-    rmse_q = np.sqrt(np.mean(np.rad2deg(rotation_errors[start_time_2:nframes]) ** 2))
+    rmse_q = np.sqrt(np.mean(np.array(rotation_errors[start_time_2:nframes]) ** 2))
 
     # bias errors
     b_start = int(t_start / dt)
@@ -1294,6 +1333,300 @@ def run(pickle_file, configs, logger):
         logger.info("Bias before ME: " + str([me_x_after, me_y_after, me_z_after]))
         logger.info("Orientation RMSE: " + str(rmse_q))
 
+        plt.rcParams.update({'font.size': 12})
+        plt.rcParams['text.usetex'] = True
+
+        # fig = plt.figure()
+        # plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 0] - true_pos_inB[:, 0])
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('$\displaystyle p_x$ (m)')
+        #
+        # fig = plt.figure()
+        # plt.plot(np.arange(0, dt*nframes, dt), centroids_inB[:, 1] - true_pos_inB[:, 1])
+        # plt.xlabel('Time (s)')
+        # plt.ylabel('$\displaystyle p_y$ (m)')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), centroids_inB[:, 2] - true_pos_inB[:, 2], label='Computed',
+                 color='blue')
+        plt.plot(np.arange(0, dt * nframes, dt), np.zeros_like(true_pos_inB), label='True', color='Green',
+                 linestyle='--')
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_z$ (m)')
+        plt.legend()
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 0] - debris_pos[:, 0], label='Computed', linewidth=1,
+                 color='blue')
+        plt.plot(np.arange(0, dt * nframes, dt), without_correction[:, 0] - debris_pos[:, 0], label='Original',
+                 linewidth=1, color='brown')
+        plt.plot(np.arange(0, dt * nframes, dt), np.zeros_like(z_s[:, 0]), label='True', color='green', linestyle='--',
+                 linewidth=1)
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_x$ (m)')
+        plt.legend()
+        # plt.title('X Position')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 1] - debris_pos[:, 1], label='Computed', linewidth=1,
+                 color='blue')
+        plt.plot(np.arange(0, dt * nframes, dt), without_correction[:, 1] - debris_pos[:, 1], label='Original',
+                 linewidth=1, color='brown')
+        plt.plot(np.arange(0, dt * nframes, dt), np.zeros_like(z_s[:, 1]), label='True', color='green', linestyle='--',
+                 linewidth=1)
+        # plt.plot(np.arange(0, dt*nframes, dt), x_s[:m1-1,1] - debris_pos[:,1], label='Estimated', linewidth=2)
+        # plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,1], label='True', linewidth=1, linestyle='dashed')
+
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_y$ (m)')
+        # plt.title('Y Position')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 2] - debris_pos[:, 2], label='Computed', linewidth=1,
+                 color='blue')
+        plt.plot(np.arange(0, dt * nframes, dt), without_correction[:, 2] - debris_pos[:, 2], label='Original',
+                 linewidth=1, color='brown')
+        plt.plot(np.arange(0, dt * nframes, dt), np.zeros_like(z_s[:, 2]), label='True', color='green', linestyle='--',
+                 linewidth=1)
+
+        # plt.plot(np.arange(0, dt*nframes, dt), debris_pos[:,2], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_z$ (m)')
+        # plt.title('Z Position')
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_xlabel('x (m)')
+        ax.set_ylabel('y (m)')
+        ax.set_zlabel('z (m)')
+        ax.scatter(debris_pos[1, 0], debris_pos[1, 1], debris_pos[1, 2], color='orange', marker='o', s=20)
+        ax.scatter(debris_pos[-1, 0], debris_pos[-1, 1], debris_pos[-1, 2], color='k', marker='o', s=20)
+        ax.scatter(z_s[:, 0], z_s[:, 1], z_s[:, 2], color='b', s=0.3, linewidths=0)
+        ax.plot(debris_pos[:, 0], debris_pos[:, 1], debris_pos[:, 2], color='g')
+        ax.legend(['Start', 'End', 'Computed Centroid Positions', 'True Centroid Positions'])
+        # plt.xlim([-170.5, -167.5])
+        # plt.ylim([-351, -306])
+        # ax.set_zlim(-20, -9)
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 3], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), omega_true[0] * np.ones([nframes, 1]), label='True', linewidth=1,
+                 linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle \Omega_x$ (rad/s)')
+        # plt.title('$\displaystyle\Omega_x$')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 4], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), omega_true[1] * np.ones([nframes, 1]), label='True', linewidth=1,
+                 linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle \Omega_y$ (rad/s)')
+        # plt.title('Omega Y')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 5], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), omega_true[2] * np.ones([nframes, 1]), label='True', linewidth=1,
+                 linestyle='dashed')
+        plt.legend()
+
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle \Omega_z$ (rad/s)')
+        # plt.title('Omega Z')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 6] - omega_true[0], label='Error $\displaystyle \Omega_x$',
+                 linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 7] - omega_true[1], label='Error $\displaystyle \Omega_y$',
+                 linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 8] - omega_true[2], label='Error $\displaystyle \Omega_z$',
+                 linewidth=2)
+        # plt.plot(np.arange(0, dt*nframes, dt), np.zeros([nframes,1]), linewidth = 1) # draw line at zero
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Angular Velocity Error (rad/s)')
+        # plt.title('Angular Velocity Errors')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 0] - debris_pos[:nframes, 0], label='Error $\displaystyle p_x$',
+                 linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 1] - debris_pos[:nframes, 1], label='Error $\displaystyle p_y$',
+                 linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2] - debris_pos[:nframes, 2], label='Error $\displaystyle p_z$',
+                 linewidth=2)
+
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Position Error (m)')
+        # plt.title('Position Errors')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 0], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 0], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_x$ (m)')
+        # plt.title('X Position')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 1], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 1], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 1], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_y$ (m)')
+        # plt.title('Y Position')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 2], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 2], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_pos[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle p_z$ (m)')
+        # plt.title('Z Position')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3] - debris_vel[:nframes, 0],
+                 label='Error $\displaystyle v_{Dx}$',
+                 linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4] - debris_vel[:nframes, 1],
+                 label='Error $\displaystyle v_{Dy}$',
+                 linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5] - debris_vel[:nframes, 2],
+                 label='Error $\displaystyle v_{Dz}$',
+                 linewidth=1)
+
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Velocity Error (m/s)')
+        # plt.title('Velocity Errors')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 3], label='Estimated', color='Orange', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 0], label='True', color='green', linewidth=1,
+                 linestyle='--')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle v_{Dx}$ (m/s)')
+        # plt.title('Velocity in X')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 4], label='Estimated', color='Orange', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 1], label='True', color='green', linewidth=1,
+                 linestyle='--')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle v_{Dy}$ (m/s)')
+        # plt.title('Velocity in y')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 5], label='Estimated', color='Orange', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), debris_vel[:nframes, 2], label='True', color='green', linewidth=1,
+                 linestyle='--')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle v_{Dz}$ (m/s)')
+        # plt.title('Velocity in z')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 9], label='$\displaystyle p_{1x}$')
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 10], label='$\displaystyle p_{1y}$')
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 11], label='$\displaystyle p_{1z}$')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Vertex $\displaystyle p_{1}$ Position (m)')
+        # plt.title('Position of Vertice P1 overt time')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 9], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 12], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 0], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle q_w$')
+        # plt.title('Orientation $\displaystyle q_0$')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 10], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 13], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 1], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle q_x$')
+        # plt.title('Orientation $\displaystyle q_1$')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 11], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 14], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 2], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle q_y$')
+        # plt.title('Orientation $\displaystyle q_2$')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), z_s[:, 12], label='Computed', linewidth=1)
+        plt.plot(np.arange(0, dt * nframes, dt), x_s[:, 15], label='Estimated', linewidth=2)
+        plt.plot(np.arange(0, dt * nframes, dt), q_true[:nframes, 3], label='True', linewidth=1, linestyle='dashed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('$\displaystyle q_z$')
+        # plt.title('Orientation $\displaystyle q_3$')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 0], label='Length')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 1], label='Width')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox1_dimensions[:, 2], label='Height')
+        plt.legend()
+        plt.title('PCA Box Dimensions')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Size (m)')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 0], label='Length')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 1], label='Width')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox2_dimensions[:, 2], label='Height')
+        plt.legend()
+        plt.title('RANSAC Box Dimensions')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Size (m)')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 0], label='Length')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 1], label='Width')
+        plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 2], label='Height')
+        plt.legend()
+        plt.title('Filtered Box Dimensions')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Size (m)')
+
+        """
+        fig = plt.figure()
+        true_b = []
+        for i in range(nframes):
+            true_b.append(Rot_L_to_B[i] @ [1,1,1])
+        true_b = np.array(true_b)
+        plt.plot(np.arange(0, dt*nframes, dt), true_b[:,2], label='True')
+
+        plt.plot(np.arange(0, dt*nframes, dt), omega_kabsch_b[:,2], label='Computed')
+        plt.legend()
+        plt.xlabel('Time (s)')
+        plt.ylabel('Angular velocity (rad/s)')
+        plt.title('$\displaystyle {}^B \Omega_z$ from Kabsch')
+        """
+
+        plt.show()
+
+
     results = [rmse_px, rmse_py, rmse_pz, rmse_omx, rmse_omy, rmse_omz, rmse_vdx, rmse_vdy, rmse_vdz, rmse_x_before, rmse_y_before, rmse_z_before,
                rmse_x_after, rmse_y_after, rmse_z_after, rmse_q]
 
@@ -1308,10 +1641,7 @@ def run_single(config):
 
     # get all file names
     pickle_files = os.listdir(config['pickle_directory_name'])
-    checked = ['sim_kompsat_trimesh_test_550.pickle', 'sim_kompsat_trimesh_test_245.pickle', 'sim_kompsat_trimesh_test_829.pickle',
-               'sim_kompsat_trimesh_test_820.pickle', 'sim_kompsat_trimesh_test_74.pickle',
-               'sim_kompsat_trimesh_test_123.pickle', 'sim_kompsat_trimesh_test_19.pickle', 'sim_kompsat_trimesh_test_681.pickle',
-               'sim_kompsat_trimesh_test_985.pickle', 'sim_kompsat_trimesh_test_611.pickle', 'sim_kompsat_trimesh_test_734.pickle']
+    checked = []
     simulation_data = []
     for file_name in os.listdir(config['pickle_directory_name']):
         if file_name in checked:
