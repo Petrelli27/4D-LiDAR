@@ -116,3 +116,20 @@ def custom_arccos(x):
     angle_deg = np.where(angle_deg > 90, 180 - angle_deg, angle_deg)
 
     return angle_deg
+
+def smoothen_q(q_true):
+    q_s = []
+    q_prev = q_true[0]
+    q_s.append(q_prev)
+    for i, q in enumerate(q_true):
+        if i==0:
+            continue
+        q_i = q_true[i]
+        q_i_alt = -q_i
+        if np.linalg.norm(q_i - q_prev) < np.linalg.norm(q_i_alt - q_prev):
+            q_s.append(q_i)
+            q_prev = q_i
+        else:
+            q_s.append(q_i_alt)
+            q_prev = q_i_alt
+    return np.array(q_s)

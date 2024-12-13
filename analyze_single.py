@@ -1208,6 +1208,7 @@ def run(pickle_file, configs, logger):
         if (not RC_flag) and i>configs['start'] and RC:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
+            q_true = smoothen_q(q_true)
 
     # Create final dataframe
     master_file['file_name'] = file_names
