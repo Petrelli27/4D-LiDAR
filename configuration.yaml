@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-pickle_directory_name: 'results_1000_test_bad'           # the directory where all the pickle files are stored
+pickle_directory_name: 'pickle_files/results_newvel_single'           # the directory where all the pickle files are stored
 
                                                 # the various columns in the final csv to be saved, description:
                                                 # true_xxx: number of times xxx should have been chosen
@@ -19,7 +19,7 @@ machine_learning_data_file_path: 'combined_output_ml_3class_200.csv'
 machine_learning_data_columns: ['file_name', 'ransac_error', 'pca_error', 'prediction_error', 'perfect_metric_choice', 'short_metric_choice', 'number_of_points', 'points_diff', 'z_spread', 'x_spread', 'y_spread', 'pca_prev_diff', 'ransac_prev_diff', 'x_spread_diff', 'y_spread_diff', 'z_spread_diff', 'ransac_pca_diff', 'ransac_pred_diff', 'pca_pred_diff']
 machine_learning_model_file: 'models/perfect_metric_modelRT3class.pkl'
 initial_machine_learning_model_file: 'models/perfect_metric_modelRT200.pkl'
-options: ''                                     # specifying 'p' will enable printing of some messages to console
+options: 'p'                                     # specifying 'p' will enable printing of some messages to console
 
 
 #############################################
