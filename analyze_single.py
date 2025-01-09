@@ -13,7 +13,7 @@ import pickle
 import scipy
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
-from mpi4py import MPI
+# from mpi4py import MPI
 import logging
 import yaml
 
@@ -1605,10 +1605,21 @@ def run(pickle_file, configs, logger):
         plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 0], label='Length')
         plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 1], label='Width')
         plt.plot(np.arange(0, dt * nframes, dt), bbox3_dimensions[:, 2], label='Height')
+        # Add horizontal lines at 5.3, 1.3, and 2.4 meters
+        plt.axhline(y=5.25, color='k', linestyle='--', label='True')  # Horizontal line at 5.3m
+        plt.axhline(y=1.25, color='k', linestyle='--')  # Horizontal line at 1.3m
+        plt.axhline(y=2.4, color='k', linestyle='--')  # Horizontal line at 2.4m
         plt.legend()
         plt.title('Filtered Box Dimensions')
         plt.xlabel('Time (s)')
         plt.ylabel('Size (m)')
+
+        fig = plt.figure()
+        plt.plot(np.arange(0, dt * nframes, dt), np.array(rotation_errors), label='Rotation Error')
+        plt.title('Rotation Error')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Angle Error (deg)')
+
 
         """
         fig = plt.figure()
