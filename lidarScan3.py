@@ -55,7 +55,8 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
 
     # Add noise to lidar scan results
     Xs, Ys, Zs = useful_rel_locations.T
-    Xn, Yn, Zn, Vn = lidarNoise.add_noise(Xs, Ys, Zs, v_los_s)
+    # Xn, Yn, Zn, Vn = lidarNoise.add_noise(Xs, Ys, Zs, v_los_s)
+    Xn, Yn, Zn, Vn = lidarNoise.add_noise_with_pointing(Xs, Ys, Zs, v_los_s)
 
     return Xn, Yn, Zn, Vn
 

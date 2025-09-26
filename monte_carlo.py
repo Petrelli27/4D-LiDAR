@@ -8,6 +8,7 @@ mpi4py.rc.threads = False
 from mpi4py import MPI
 import logging
 import random
+import time
 
 random.seed(42)
 np.random.seed(42)
@@ -46,6 +47,7 @@ def run_monte_carlo(config):
         end += remainder  # Last process takes any remaining rows
 
     simulation_data = []
+    comp_times = []
 
     for idx in range(start, end):
 
@@ -54,7 +56,10 @@ def run_monte_carlo(config):
         else:
             pass
         pickle_file = pickle_files[idx]
+        start = time.time()
         results = analyze_parallel.run(pickle_file, config, logger)
+        end = time.time()
+        comp_times.append(end - start)
         simulation_data.append(results)
 
     logger.info(f"rank {rank} done all files")
@@ -67,6 +72,7 @@ def run_monte_carlo(config):
     if rank == 0:
         # convert to dataframe
         results_as_df = pd.DataFrame(np.array(all_simulation_data).squeeze().reshape(len(pickle_files), len(config['results_column_names'])), columns=config['results_column_names'])
+        results_as_df['comp_time'] = comp_times
         results_as_df['pickle_file'] = pickle_files
 
         # save as csv

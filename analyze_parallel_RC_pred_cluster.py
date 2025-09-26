@@ -1082,12 +1082,14 @@ def run(pickle_file, configs, logger):
     master_file['pca_pred_diff'] = pca_pred_diffs
     master_file['estimate_error'] = rotation_errors
 
+    os.makedirs('full_results', exist_ok=True)
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ######
     # box assigment experiment
     #####
     assignment_results = pd.DataFrame(metric_boxes)
+    os.makedirs('assignment_results', exist_ok=True)
     assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ##############
