@@ -20,63 +20,55 @@ def add_noise(X, Y, Z, V):
     Z_n = p_noisy[:,2]
     return X_n, Y_n, Z_n, V_n
 
-def add_noise_with_pointing(X, Y, Z, V,
-                            range_sigma=0.02,          # m (2 cm)
-                            vel_sigma=0.03,            # m/s (3 cm/s)
-                            point_sigma_deg=0.002,     # pointing 1-sigma in degrees
-                            angular_mode='gaussian'     # or 'uniform' in ±sigma
-                           ):
+
+def add_noise_with_global_pointing(
+    X, Y, Z, V,
+    range_sigma=0.02,      # m
+    vel_sigma=0.03,        # m/s
+    point_sigma_deg=0.002, # 1-sigma pointing (deg)
+    angular_mode='gaussian',  # 'gaussian' or 'uniform'
+    omega_xyz_deg=None       # optional (rx, ry, rz) in deg; if given, use exactly
+):
     """
-    Adds LiDAR range & velocity noise and pointing uncertainty.
-    Pointing uncertainty is modeled as a small 2D angular perturbation
-    in the tangent plane orthogonal to the LOS, with known realized angles.
+    Same angular mispoint for all rays. Pointing is modeled as a small rotation
+    of the LOS in the sensor frame, using u_tilted ≈ normalize(u + ω×u).
+    If omega_xyz_deg is provided (tuple of 3 angles in deg), that exact rotation is used.
     """
-    p = np.vstack([X, Y, Z]).T                            # (N,3)
-    d = np.linalg.norm(p, axis=1)                         # (N,)
-    # Guard against zero distance
+    p = np.vstack([X, Y, Z]).T
+    d = np.linalg.norm(p, axis=1)
     d = np.where(d == 0, 1e-12, d)
-    u = (p.T / d).T                                       # (N,3) unit LOS
+    u = (p.T / d).T  # unit LOS per point
 
-    # --- Build an orthonormal basis (e1, e2) in the plane ⟂ to u ---
-    # Choose a reference not parallel to u for cross product stability
-    ref = np.tile(np.array([0.0, 0.0, 1.0]), (len(u), 1))
-    nearly_parallel = np.abs(u[:, 2]) > 0.9               # if too parallel to z-hat, use x-hat
-    ref[nearly_parallel] = np.array([1.0, 0.0, 0.0])
-
-    e1 = np.cross(u, ref)
-    e1_norm = np.linalg.norm(e1, axis=1, keepdims=True)
-    e1 = e1 / np.maximum(e1_norm, 1e-12)
-    e2 = np.cross(u, e1)                                   # already orthonormal if u,e1 are
-
-    # --- Sample small angular errors (alpha, beta) in radians ---
-    sig = np.deg2rad(point_sigma_deg)
-    if angular_mode == 'gaussian':
-        alpha = np.random.normal(0.0, sig, size=len(u))
-        beta  = np.random.normal(0.0, sig, size=len(u))
-    elif angular_mode == 'uniform':
-        alpha = np.random.uniform(-sig, sig, size=len(u))
-        beta  = np.random.uniform(-sig, sig, size=len(u))
+    # --- choose one global small rotation vector omega (radians) ---
+    if omega_xyz_deg is not None:
+        rx, ry, rz = np.deg2rad(omega_xyz_deg)
     else:
-        raise ValueError("angular_mode must be 'gaussian' or 'uniform'")
+        sig = np.deg2rad(point_sigma_deg)
+        if angular_mode == 'gaussian':
+            rx, ry, rz = np.random.normal(0.0, sig, size=3)
+        elif angular_mode == 'uniform':
+            rx = np.random.uniform(-sig, sig)
+            ry = np.random.uniform(-sig, sig)
+            rz = np.random.uniform(-sig, sig)
+        else:
+            raise ValueError("angular_mode must be 'gaussian' or 'uniform'")
+    omega = np.array([rx, ry, rz])  # same for all points
 
-    # --- Apply pointing error: small-angle perturbation in tangent plane ---
-    # u_tilted ≈ normalize(u + alpha*e1 + beta*e2)
-    u_tilted = u + (alpha[:, None] * e1) + (beta[:, None] * e2)
+    # --- apply small rotation: u_tilted = normalize(u + omega x u) ---
+    omega_tile = np.tile(omega, (len(u), 1))
+    u_tilted = u + np.cross(omega_tile, u)
     u_tilted /= np.linalg.norm(u_tilted, axis=1, keepdims=True)
 
-    # --- Range & velocity noise (your original specs) ---
-    distance_noise = np.random.normal(0.0, range_sigma, size=len(d))
+    # --- add range & velocity noise as before ---
+    d_noisy = d + np.random.normal(0.0, range_sigma, size=len(d))
     v_noise = np.random.normal(0.0, vel_sigma, size=len(V))
 
-    # Noisy position lies along the *mispointed* LOS with noisy range
-    d_noisy = d + distance_noise
     p_noisy = (u_tilted.T * d_noisy).T
-
     V_n = V + v_noise
 
     X_n = p_noisy[:, 0]
     Y_n = p_noisy[:, 1]
     Z_n = p_noisy[:, 2]
 
-    # Return also the realized pointing info that is "known" to you
+    # Return also the actual rotation used (deg) so you "know" your pointing
     return X_n, Y_n, Z_n, V_n

@@ -495,7 +495,7 @@ def run(pickle_file, configs, logger):
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
         # visualize_flag = i>=0 and i%20 == 0
-        visualize_flag = False
+        visualize_flag = True
         print(f"Iteration {i}")
         # Use first measurements for initializations of states - not implemented currently, just chose initial states up top
         if i > 0:
