@@ -35,8 +35,8 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
     d = np.linalg.norm(debris_pos[i])
 
     fov = np.rad2deg(2*np.arctan2(res_box / 2, d))
-    h_resolution = min(int(fov / ang_res), 60)
-    v_resolution = min(int(fov / ang_res), 60)
+    h_resolution = min(int(fov / ang_res), 200)
+    v_resolution = min(int(fov / ang_res), 200)
     h_range = fov
     v_range = fov
 
@@ -73,9 +73,9 @@ def get_initial_conditions(conditions_count=100):
     dt = 0.05
     while i<conditions_count:
         # Position (in km)
-        px = np.random.uniform(-0.35, 0.35)
-        py = np.random.uniform(-0.35, 0.35)
-        pz = np.random.uniform(-0.35, 0.35)
+        px = np.random.uniform(-0.05, 0.05)
+        py = np.random.uniform(-0.05, 0.05)
+        pz = np.random.uniform(-0.05, 0.05)
         
         # Velocity (in km/s)
         vx = np.random.uniform(-0.001, 0.001)
@@ -98,14 +98,15 @@ def get_initial_conditions(conditions_count=100):
         rdot0 = np.array([vx, vy, vz])
     
         if i==0:
-            nframes = 4000
+            nframes = 250
         elif i==1:
-            nframes = 4000
+            nframes = 250
         else:
-            nframes = 4000
+            nframes = 250
 
         _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion)
-        if max(d) > 500:
+        print(d)
+        if max(d) > 500 or min(d) < 5:
             # too far, avoid appending this result
             continue
 
@@ -144,7 +145,9 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     res_box = 7
 
     # load debris mesh
-    debris_file = 'kompsat-1-v9.stl'
+    # debris_file = 'kompsat-1-v9.stl'
+    # debris_file = 'observer-cubesat-v7.stl'
+    debris_file = 'observer-cubesat-scaled.stl'
 
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs = [], [], [], [], [], []
 
@@ -166,7 +169,7 @@ def run_single_simulation(rank, sim_parameters, sim_index):
 
     # Save the simulation data immediately
     os.makedirs('results', exist_ok=True)
-    with open(f'results/sim_kompsat_trimesh_test_{sim_index}.pickle', 'wb') as sim_data:
+    with open(f'results/sim_debris_trimesh_test_{sim_index}.pickle', 'wb') as sim_data:
         pickle.dump(simulation_data, sim_data)
 
     print(f"Process {rank} completed and saved simulation {sim_index}")
@@ -179,7 +182,7 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    num_tests = 4
+    num_tests = 1
     try:
         initial_conditions_list = list(get_initial_conditions(num_tests))
         total_conditions = len(initial_conditions_list)

@@ -41,47 +41,65 @@ def run_monte_carlo(config):
     remainder = len(pickle_files) % size
 
     # Calculate start and end indices for this process
-    start = rank * chunk_size
-    end = start + chunk_size
+    start_idx = rank * chunk_size
+    end_idx = start_idx + chunk_size
     if rank == size - 1:
-        end += remainder  # Last process takes any remaining rows
+        end_idx += remainder  # Last process takes any remaining rows
 
-    simulation_data = []
-    comp_times = []
+    # Slice the files this rank will handle (helps keep everything aligned)
+    my_files = pickle_files[start_idx:end_idx]
 
-    for idx in range(start, end):
+    simulation_data = []  # e.g., list of dicts/rows, one per file
+    comp_times = []  # seconds, one per file
 
-        if rank >= 0:
-            logger.info(f"Rank {rank} processing {idx % (end - start)} of {end - start} iterations")
-        else:
-            pass
-        pickle_file = pickle_files[idx]
-        start = time.time()
+    for i, pickle_file in enumerate(my_files, start=1):
+        logger.info(f"Rank {rank} processing {i}/{len(my_files)}")
+        t0 = time.time()
         results = analyze_parallel.run(pickle_file, config, logger)
-        end = time.time()
-        comp_times.append(end - start)
+        t1 = time.time()
+        comp_times.append(t1 - t0)
         simulation_data.append(results)
 
-    logger.info(f"rank {rank} done all files")
+    logger.info(f"Rank {rank} done all files")
 
-    # Synchronize processes
+    # Synchronize (optional; gather would be enough)
     comm.Barrier()
 
+    # Gather lists from all ranks (order is by rank)
     all_simulation_data = comm.gather(simulation_data, root=0)
+    all_comp_times = comm.gather(comp_times, root=0)
+    all_file_slices = comm.gather(my_files, root=0)
 
     if rank == 0:
-        # convert to dataframe
-        results_as_df = pd.DataFrame(np.array(all_simulation_data).squeeze().reshape(len(pickle_files), len(config['results_column_names'])), columns=config['results_column_names'])
-        results_as_df['comp_time'] = comp_times
-        results_as_df['pickle_file'] = pickle_files
+        # Flatten in rank order so rows align
+        flat_results = [row for rank_list in all_simulation_data for row in rank_list]
+        flat_times = [ct for rank_list in all_comp_times for ct in rank_list]
+        flat_files = [pf for rank_list in all_file_slices for pf in rank_list]
 
-        # save as csv
-        results_as_df.to_csv(os.path.join(config['top_level_dir'], config['results_file_name']), sep=',', header=True,
-                             index=False)
-    else:
-        pass
+        # Build DataFrame robustly depending on what `results` is
+        # Case A: each `results` is a dict with keys == results_column_names
+        if isinstance(flat_results[0], dict):
+            results_as_df = pd.DataFrame(flat_results)
+            # Ensure column order if desired
+            if 'results_column_names' in config:
+                cols = [c for c in config['results_column_names'] if c in results_as_df.columns]
+                # Include any extra columns at the end
+                extras = [c for c in results_as_df.columns if c not in cols]
+                results_as_df = results_as_df[cols + extras]
+        else:
+            # Case B: each `results` is a list/tuple of values
+            results_as_df = pd.DataFrame(
+                flat_results,
+                columns=config['results_column_names']
+            )
 
-    return
+        # Add timing and file columns (same length and order)
+        results_as_df['comp_time'] = flat_times
+        results_as_df['pickle_file'] = flat_files
+
+        # Save
+        out_path = os.path.join(config['top_level_dir'], config['results_file_name'])
+        results_as_df.to_csv(out_path, sep=',', header=True, index=False)
 
 
 with open('configuration.yaml', 'r') as f:
