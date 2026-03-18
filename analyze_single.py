@@ -996,164 +996,165 @@ def run(pickle_file, configs, logger):
             if not ransac_error:
                 z_q_k_2_previous = z_q_k_2.copy()
 
-        if visualize_flag:
-            # if False:
-            print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
-            print('Ransac True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))))
-            print('Pred True diff.:' + str(np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))))
-            print('PCA Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_kp1))))
-            print('Ransac Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_kp1))))
-            print('Ransac PCA diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))))
-            print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
-            print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
-            print(perfect_metric)
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            # ax.legend()
-            ax.set_xlabel('x (m)')
-            ax.set_ylabel('y (m)')
-            ax.set_zlabel('z (m)')
-            ax.title.set_text(
-                f'Time={i * dt}s' + '\n' + f'Pred. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
-            # width = orange to green, blue to green
-            # length = orange to cyan, blue to cyan
-            # height = orange to magenta, blue to magenta
-            ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
-            # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
+        if i % 100 == 0:
+            if visualize_flag:
+                # if False:
+                print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
+                print('Ransac True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))))
+                print('Pred True diff.:' + str(np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))))
+                print('PCA Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_kp1))))
+                print('Ransac Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_kp1))))
+                print('Ransac PCA diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))))
+                print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
+                print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
+                print(perfect_metric)
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                # ax.legend()
+                ax.set_xlabel('x (m)')
+                ax.set_ylabel('y (m)')
+                ax.set_zlabel('z (m)')
+                ax.title.set_text(
+                    f'Time={i * dt}s' + '\n' + f'Pred. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
+                # width = orange to green, blue to green
+                # length = orange to cyan, blue to cyan
+                # height = orange to magenta, blue to magenta
+                ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+                # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
 
 
-            # print(x_kp1)
-            # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
-            # drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2],
-            #             associatedBbox_1[:, 3],
-            #             associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7],
-            #             'b', 2, 'PCA')
+                # print(x_kp1)
+                # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
+                # drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2],
+                #             associatedBbox_1[:, 3],
+                #             associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7],
+                #             'b', 2, 'PCA')
 
-            drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
-                        associatedBbox_2[:, 3],
-                        associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
-                        'orange', 2, 'RANSAC')
+                drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
+                            associatedBbox_2[:, 3],
+                            associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6], associatedBbox_2[:, 7],
+                            'orange', 2, 'RANSAC')
 
-            # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
-            #           associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
+                # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+                #           associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
 
-            # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
-            #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
-            # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
-            # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
-            #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+                # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+                #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+                # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
+                # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
+                #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
 
-            # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
-            # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
-            #            label='Vertex 1 Meas.')
+                # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
+                # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
+                #            label='Vertex 1 Meas.')
 
 
-            Rot_measured = quat2rotm(z_q_k_1)
+                Rot_measured = quat2rotm(z_q_k_1)
 
-            Rot_measured_2 = quat2rotm(z_q_k_2)
-            # Rot_measured_2 = R_1_2
-            # normal_vecs = normal_vecs.T
+                Rot_measured_2 = quat2rotm(z_q_k_2)
+                # Rot_measured_2 = R_1_2
+                # normal_vecs = normal_vecs.T
 
-            R_estimated = quat2rotm(q_kp1)
+                R_estimated = quat2rotm(q_kp1)
 
-            R_true = quat2rotm(q_true[i, :])
+                R_true = quat2rotm(q_true[i, :])
 
-            # plot measured
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
-            #         color='blue', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
-            #         color='blue', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
-            #         color='b', linewidth=4)
+                # plot measured
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
+                #         color='b', linewidth=4)
 
-            # plot measured
-            ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
-                    [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
-                    color='orange', linewidth=4)
-            ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
-                    [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
-                    color='orange', linewidth=4)
-            ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
-                    [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
-                    color='orange', linewidth=4)
-            #
-            # Rot_measured_2 = R_1_2
-            # plot measured
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
-            #         color='red', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
-            #         color='red', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
-            #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
-            #         color='red', linewidth=4)
+                # plot measured
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                        color='orange', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                        color='orange', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                        color='orange', linewidth=4)
+                #
+                # Rot_measured_2 = R_1_2
+                # plot measured
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                #         color='red', linewidth=4)
 
-            # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
-            #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
-            #         color='blue', linewidth=4)
-            # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 1]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 1]],
-            #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 1]],
-            #         color='blue', linewidth=4)
-            # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 2]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 2]],
-            #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 2]],
-            #         color='blue', linewidth=4)
-            #
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 1]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 1]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 1]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 2]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 2]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 2]],
+                #         color='blue', linewidth=4)
+                #
 
-            # plot current estimate of ekf
-            # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
-            #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
-            #         color='red', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
-            #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
-            #         color='red', linewidth=4)
-            # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
-            #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
-            #         color='red', linewidth=4, label='Predicted')
-            #
-            # plot true
-            ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
-                    [z_p_k[2], z_p_k[2] + R_true[2, 0]],
-                    color='green', linewidth=4)
-            ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
-                    [z_p_k[2], z_p_k[2] + R_true[2, 1]],
-                    color='green', linewidth=4)
-            ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
-                    [z_p_k[2], z_p_k[2] + R_true[2, 2]],
-                    color='green', linewidth=4, label='True')
+                # plot current estimate of ekf
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+                #         color='red', linewidth=4, label='Predicted')
+                #
+                # plot true
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 0]],
+                        color='green', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 1]],
+                        color='green', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 2]],
+                        color='green', linewidth=4, label='True')
 
-            # plot b_frame
-            # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
-            #         [0., 0. + Rot_B_to_L[i][2, 0]],
-            #         color='r', linewidth=1)
-            # ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
-            #         [0., 0. + Rot_B_to_L[i][2, 1]],
-            #         color='g', linewidth=1)
-            # ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
-            #         [0., 0. + Rot_B_to_L[i][2, 2]],
-            #         color='b', linewidth=1)
+                # plot b_frame
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                #         [0., 0. + Rot_B_to_L[i][2, 0]],
+                #         color='r', linewidth=1)
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                #         [0., 0. + Rot_B_to_L[i][2, 1]],
+                #         color='g', linewidth=1)
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                #         [0., 0. + Rot_B_to_L[i][2, 2]],
+                #         color='b', linewidth=1)
 
-            # black is axis of rotation
-            # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
-            #         [z_p_k[2], z_p_k[2] + 1],
-            #         color='black', linewidth=4)
+                # black is axis of rotation
+                # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+                #         [z_p_k[2], z_p_k[2] + 1],
+                #         color='black', linewidth=4)
 
-            # outlier_cloud = pcd.select_by_index(inliers, invert=True)
+                # outlier_cloud = pcd.select_by_index(inliers, invert=True)
 
-            # Visualize the inliers (plane) and outliers
-            # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
-            # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
-            # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
+                # Visualize the inliers (plane) and outliers
+                # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
+                # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
+                # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
-            # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
-            ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
-            ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
-            ax.legend()
-            ax.set_aspect('equal', 'box')
-            plt.show()
+                # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+                ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
+                ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
+                ax.legend()
+                ax.set_aspect('equal', 'box')
+                plt.show()
 
         z_s.append(z_kp1)
         z_pcas.append(np.hstack([z_p_k_1, z_omega_k, associatedBbox_1[:, 0], z_q_k_1]))
@@ -1232,23 +1233,14 @@ def run(pickle_file, configs, logger):
     master_file['pca_pred_diff'] = pca_pred_diffs
     master_file['estimate_error'] = rotation_errors
 
-    if not os.path.exists('full_results'):
-        os.makedirs('full_results')
-    else:
-        pass
-
+    os.makedirs('full_results', exist_ok=True)
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ######
     # box assigment experiment
     #####
-
-    if not os.path.exists('assignment_results'):
-        os.makedirs('assignment_results')
-    else:
-        pass
-
     assignment_results = pd.DataFrame(metric_boxes)
+    os.makedirs('assignment_results', exist_ok=True)
     assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ##############
@@ -1256,21 +1248,8 @@ def run(pickle_file, configs, logger):
     ############
 
 
-    m1 = len(x_s)
-
-    z_s = padding_nan(z_s)
     x_s = np.array(x_s)
     x_s = x_s[1:, :]
-    q_true = np.array(q_true)
-    original_pos_meas = np.array(original_pos_meas)
-    centroids_inB = np.array(centroids_inB)
-    true_pos_inB = np.array(true_pos_inB)
-    z_pcas = np.array(z_pcas)
-    z_rans = np.array(z_rans)
-    without_correction = np.array(without_correction)
-    bbox1_dimensions = np.array(bbox1_dimensions)
-    bbox2_dimensions = np.array(bbox2_dimensions)
-    bbox3_dimensions = np.array(bbox3_dimensions)
 
     #####################
     # errors over last 'error_start' seconds

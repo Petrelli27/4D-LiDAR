@@ -147,7 +147,8 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     # load debris mesh
     # debris_file = 'kompsat-1-v9.stl'
     # debris_file = 'observer-cubesat-v7.stl'
-    debris_file = 'observer-cubesat-scaled.stl'
+    # debris_file = 'observer-cubesat-scaled.stl'
+    debris_file = 'observer-cubesat-scaled-v2.stl'
 
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs = [], [], [], [], [], []
 

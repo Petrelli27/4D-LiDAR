@@ -66,7 +66,7 @@ pca_prediction_threshold: 20                   # maximal difference in degrees b
 ransac_pca_threshold: 15                       # maximal difference in degrees between ransac and pca orientations
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
 true_orientation_difference: 15               # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: False                      # for comparison
+use_perfect_metric: True                      # for comparison
 short_metric_thresh: 15                         # threshold angle in degrees for short metric
 
 
