@@ -68,7 +68,7 @@ previous_threshold_multiplier: 3               # multiplier X omega X delta t gi
 true_orientation_difference: 15               # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
 use_perfect_metric: True                      # for comparison
 short_metric_thresh: 15                         # threshold angle in degrees for short metric
-
+orthonormal_thresh: 0.85                        # volume threshold for using RANSAC even when there is no concord (ranges from 0-1, 1 means perfectly orthonormal, 0 means terrible)
 
 ######################################
 # Other config
