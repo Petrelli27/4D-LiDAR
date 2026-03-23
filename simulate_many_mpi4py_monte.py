@@ -120,9 +120,7 @@ def get_initial_conditions(conditions_count=100):
             continue
 
         # --- configuration ---
-        enable_frame_dropout = True
-
-
+        enable_frame_dropout = False
 
         starts_dict.append({
             'px': px, 'py': py, 'pz': pz,
