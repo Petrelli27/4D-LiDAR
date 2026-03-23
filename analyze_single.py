@@ -94,11 +94,17 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         initial_guess = params_ini
 
     # Perform the curve fitting
-    params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
-    constant = max(sum_of_sinusoids(t, *params))
+    params = []
+    constant = 0.0
+    success = True
+    try:
+        params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
+        constant = max(sum_of_sinusoids(t, *params))
+    except RuntimeError:
+        success = False
     # print(constant)
 
-    return params, constant
+    return params, constant, success
 
 
 def correct_bias(z_p_k_meas, curr_i, dt_here, parameters, constants, R_i_L_to_B, R_i_B_to_L):
@@ -652,7 +658,7 @@ def run(pickle_file, configs, logger):
                 thresh = configs['threshold']  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
                 num_sin = configs['number_of_sinusoids']  # number of sinusoids to use to fit the data
                 skip = configs['number_of_skips']  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-                params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+                params_z, constant_z, bias_removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
                 parameters = [params_x, params_y, params_z]
 
                 constants = [0, 0, constant_z]
@@ -834,7 +840,7 @@ def run(pickle_file, configs, logger):
             bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
         else:
             bbox2_dimensions.append([0, 0, 0])
-        if curr_t >= (t_start + t_interval):
+        if curr_t >= (t_start + t_interval) and bias_removal_success:
             z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
             z_p_k = z_p_k_z
 

@@ -94,11 +94,17 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         initial_guess = params_ini
 
     # Perform the curve fitting
-    params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
-    constant = max(sum_of_sinusoids(t, *params))
+    params = []
+    constant = 0.0
+    success = True
+    try:
+        params, params_covariance = curve_fit(sum_of_sinusoids, t, y, p0=initial_guess)
+        constant = max(sum_of_sinusoids(t, *params))
+    except RuntimeError:
+        success = False
     # print(constant)
 
-    return params, constant
+    return params, constant, success
 
 
 def correct_bias(z_p_k_meas, curr_i, dt_here, parameters, constants, R_i_L_to_B, R_i_B_to_L):
@@ -623,6 +629,14 @@ def run(pickle_file, configs, logger):
         else:
             ransac_error = False
 
+        ransac_vecs_volume = 0.0
+        orthonormal_flag = False
+        if not ransac_error and normal_vecs.shape[0] >= 3:
+            n0 = normal_vecs[0] / np.linalg.norm(normal_vecs[0])
+            n1 = normal_vecs[1] / np.linalg.norm(normal_vecs[1])
+            n2 = normal_vecs[2] / np.linalg.norm(normal_vecs[2])
+            ransac_vecs_volume = abs(np.linalg.det(np.array([n0, n1, n2])))
+
         ############
         # bias removal
         ############
@@ -652,7 +666,7 @@ def run(pickle_file, configs, logger):
                 thresh = configs['threshold']  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
                 num_sin = configs['number_of_sinusoids']  # number of sinusoids to use to fit the data
                 skip = configs['number_of_skips']  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-                params_z, constant_z = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+                params_z, constant_z, bias_removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
                 parameters = [params_x, params_y, params_z]
 
                 constants = [0, 0, constant_z]
@@ -728,6 +742,7 @@ def run(pickle_file, configs, logger):
             pred_true_diff = np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))
             # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
             short_metric_thresh = configs['short_metric_thresh']
+            orthonormal_thresh = configs['orthonormal_thresh']
 
             if i > configs['start']:
                 pca_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
@@ -745,6 +760,9 @@ def run(pickle_file, configs, logger):
             if RC:
                 use_measurement = 2
                 short_metric_choice = "ransac 1"
+            elif ransac_vecs_volume > orthonormal_thresh:
+                use_measurement = 2
+                short_metric_choice = "ransac 2"
             else:
                 use_measurement = 3
                 short_metric_choice = "pred 4"
@@ -786,8 +804,6 @@ def run(pickle_file, configs, logger):
 
         if configs['use_perfect_metric']:
             use_measurement = ideal_measurement
-
-        
         if use_measurement == 2:
             try:
                 # use ransac
@@ -832,7 +848,7 @@ def run(pickle_file, configs, logger):
             bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
         else:
             bbox2_dimensions.append([0, 0, 0])
-        if curr_t >= (t_start + t_interval):
+        if curr_t >= (t_start + t_interval) and bias_removal_success:
             z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
             z_p_k = z_p_k_z
 
@@ -1059,6 +1075,7 @@ def run(pickle_file, configs, logger):
         if (not RC_flag) and i>configs['start'] and RC:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
+            q_true = smoothen_q(q_true)
 
     # Create final dataframe
     master_file['file_name'] = file_names
