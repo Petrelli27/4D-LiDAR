@@ -181,7 +181,14 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs, partials = [], [], [], [], [], [], []
 
     for i in range(nframes):
-        X, Y, Z, P, V_los, Rot_L_to_B, partial = process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, mean_motion, res_box, ang_res)
+        # Rotate omega_L into the current L frame using Rodrigues' formula
+        angle_i = mean_motion * dt * i
+        axis = np.array([0, 0, 1])[:, np.newaxis]  # 3x1
+        R_L = (np.cos(angle_i) * np.eye(3)
+                + (1 - np.cos(angle_i)) * (axis @ axis.T)
+                + np.sin(angle_i) * tilde(axis)) # rodrigues formula
+        omega_L_i = R_L @ omega_L
+        X, Y, Z, P, V_los, Rot_L_to_B, partial = process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L_i, dt, r0, rdot0, mean_motion, res_box, ang_res)
         XBs.append(X)
         YBs.append(Y)
         ZBs.append(Z)
