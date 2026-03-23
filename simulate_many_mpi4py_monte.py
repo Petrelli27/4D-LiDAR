@@ -1,3 +1,5 @@
+from functorch.dim import use_c
+
 import dynamics
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,11 +36,18 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
     vx, vy, vz = debris_vel[i]
     d = np.linalg.norm(debris_pos[i])
 
-    fov = np.rad2deg(2*np.arctan2(res_box / 2, d))
-    h_resolution = min(int(fov / ang_res), 200)
-    v_resolution = min(int(fov / ang_res), 200)
-    h_range = fov
-    v_range = fov
+    fov_req = np.rad2deg(2*np.arctan2(res_box / 2, d))
+    fov_h = min(fov_req, 120)
+    fov_v = min(fov_req, 30)
+
+    partial = False
+    if fov_req > fov_h or fov_req > fov_v:
+        partial = True
+
+    h_resolution = min(int(fov_h / ang_res), 200)
+    v_resolution = min(int(fov_v / ang_res), 200)
+    h_range = fov_h
+    v_range = fov_v
 
     debris = trimesh.load(debris_file)
     Rot_L_to_B = getR(x, y, z)
@@ -64,7 +73,7 @@ def process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L
     # visualize_trimesh(debris, np.column_stack((X,Y,Z)))
     print(f"Process {rank} processing frame: {i}")
 
-    return X, Y, Z, P, V_los, Rot_L_to_B
+    return X, Y, Z, P, V_los, Rot_L_to_B, partial
 
 def get_initial_conditions(conditions_count=100):
     starts_dict = []
@@ -110,13 +119,18 @@ def get_initial_conditions(conditions_count=100):
             # too far, avoid appending this result
             continue
 
+        # --- configuration ---
+        enable_frame_dropout = True
+
+
+
         starts_dict.append({
             'px': px, 'py': py, 'pz': pz,
             'vx': vx, 'vy': vy, 'vz': vz,
             'angle_0': angle_0,
             'omx': omx, 'omy': omy, 'omz': omz,
             'mean_motion': mean_motion,
-            'nframes': nframes  # Randomly choose one of these values
+            'nframes': nframes, 'use_frames':enable_frame_dropout  # Randomly choose one of these values
         })
         i += 1
     return starts_dict
@@ -128,6 +142,22 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     angle_0 = sim_parameters['angle_0']
     mean_motion = sim_parameters['mean_motion']
     nframes = sim_parameters['nframes']
+    use_frames_enabled = sim_parameters['use_frames']
+
+    dropout_alpha = 2.0
+    dropout_beta = 20.0
+
+    # --- generate use_frame array ---
+    if use_frames_enabled:
+        # draw one dropout probability for the entire run
+        p_drop_run = np.random.beta(dropout_alpha, dropout_beta)
+
+        # Bernoulli per frame
+        use_frames = np.random.random(nframes) > p_drop_run
+    else:
+        # original behavior: use all frames
+        p_drop_run = 0.0
+        use_frames = np.ones(nframes, dtype=bool)
 
     # Your existing initialization code here...
     O_B = np.array([0,0,0])
@@ -150,22 +180,34 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     # debris_file = 'observer-cubesat-scaled.stl'
     debris_file = 'observer-cubesat-scaled-v2.stl'
 
-    XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs = [], [], [], [], [], []
+    XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs, partials = [], [], [], [], [], [], []
 
     for i in range(nframes):
-        X, Y, Z, P, V_los, Rot_L_to_B = process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, mean_motion, res_box, ang_res)
+        X, Y, Z, P, V_los, Rot_L_to_B, partial = process_frame(rank, i, debris_file, debris_pos, debris_vel, angle_0, omega_L, dt, r0, rdot0, mean_motion, res_box, ang_res)
         XBs.append(X)
         YBs.append(Y)
         ZBs.append(Z)
         PBs.append(P)
         VBs.append(V_los)
         Rot_L_to_Bs.append(Rot_L_to_B)
+        partials.append(partial)
 
     # Package the results
     simulation_data = {
-        'XBs': XBs, 'YBs': YBs, 'ZBs': ZBs, 'PBs': PBs, 'VBs': VBs,
-        'debris_pos': debris_pos, 'debris_vel': debris_vel,
-        'Rot_L_to_B': Rot_L_to_Bs, 'omega_L': omega_L, 'dt': dt, 'angle_0': angle_0
+        'XBs': XBs,
+        'YBs': YBs,
+        'ZBs': ZBs,
+        'PBs': PBs,
+        'VBs': VBs,
+        'debris_pos': debris_pos,
+        'debris_vel': debris_vel,
+        'Rot_L_to_B': Rot_L_to_Bs,
+        'omega_L': omega_L,
+        'dt': dt,
+        'angle_0': angle_0,
+        'partial': partials,
+        'use_frame': use_frames,
+        'p_drop_run': p_drop_run  # useful for debugging / reproducibility
     }
 
     # Save the simulation data immediately
@@ -190,6 +232,7 @@ if __name__ == '__main__':
 
         # Distribute work among processes
         local_results = []
+
         for i in range(rank, total_conditions, size):
             conditions = initial_conditions_list[i]
             sim_index = run_single_simulation(rank, conditions, i)
