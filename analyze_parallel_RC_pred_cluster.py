@@ -297,6 +297,29 @@ def recalibrate_true_orientation(q_true, q_measurement, recalibrate_frame):
         q_true_recalibrated[i] = q_new
     return q_true_recalibrated
 
+def eigenvalue_metric(evals):
+    evals.sort()
+    a = evals[0]
+    b = evals[1]
+    c = evals[2]
+    d = c-a
+    if abs(d)<1e-8:
+        return 0.0
+    else:
+        return (b-a)*(c-b)/(d*d)
+
+def boresight_metric(Rot_L_to_B, evecs):
+    z_axis = Rot_L_to_B.T @ np.array([0, 0, 1])
+    
+    angles = []
+    for evec in evecs:
+        cos_angle = np.abs(np.dot(z_axis, evec) / (np.linalg.norm(z_axis) * np.linalg.norm(evec)))
+        cos_angle = np.clip(cos_angle, 0, 1)
+        angle = np.arccos(cos_angle)
+        angles.append(angle)
+    
+    return np.min(angles)
+
 def run(pickle_file, configs, logger):
 
     # Initialize MPI
@@ -413,6 +436,9 @@ def run(pickle_file, configs, logger):
     original_pos_meas = []
     estimated_pos = [p_0]
     rotation_errors = [0]
+    ransac_orthos = []
+    pca_ratios = []
+    pca_angles = []
 
     # bias config
     interval_time = 0  # for bias part
@@ -485,7 +511,7 @@ def run(pickle_file, configs, logger):
         X_i = PL[:,0]
         Y_i = PL[:,1]
         Z_i = PL[:,2]
-        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        z_pi_k_1, z_p_k_1, R_1, evecs, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         z_q_k_1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
         if R_1_2.size == 0:
@@ -619,7 +645,7 @@ def run(pickle_file, configs, logger):
         #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
 
         # Return bounding box and centroid estimate of bounding box
-        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        z_pi_k_1, z_p_k_1, R_1, evecs, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         if i == 0:
             q_kp1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
@@ -748,7 +774,11 @@ def run(pickle_file, configs, logger):
                 pca_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
                 ran_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
 
-
+            # pca metric
+            pca_ratio = eigenvalue_metric(evals)
+            pca_ratios[i] = eig_ratio
+            pca_angle = np.degree(boresight_metric(Rot_L_to_B[i], evecs))
+            pca_angles[i] = pca_angle
         if i == 0:
             use_measurement = 2  # ransac by default
             short_metric_choice = "ransac 0"
@@ -763,6 +793,12 @@ def run(pickle_file, configs, logger):
             elif ransac_vecs_volume > orthonormal_thresh:
                 use_measurement = 2
                 short_metric_choice = "ransac 2"
+            elif pca_ratio > eig_thresh:
+                use_measurement = 1
+                short_metric_choice = "pca 1"
+            elif pca_angle < boresight_thresh:
+                use_measurement = 2
+                short_metric_choice = "ransac 3"
             else:
                 use_measurement = 3
                 short_metric_choice = "pred 4"
@@ -1098,6 +1134,9 @@ def run(pickle_file, configs, logger):
     master_file['ransac_pred_diff'] = ransac_pred_diffs
     master_file['pca_pred_diff'] = pca_pred_diffs
     master_file['estimate_error'] = rotation_errors
+    master_file['ransac_orthogonality'] = ransac_orthos
+    master_file['pca_ratio'] = pca_ratios
+    master_file['pca_angle'] = pca_angles
 
     os.makedirs('full_results', exist_ok=True)
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
