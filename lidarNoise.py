@@ -159,7 +159,8 @@ def add_noise_with_global_pointing_and_range_dependent_error_and_dropout(
     omega_xyz_deg=None,       # optional (rx, ry, rz) in deg; if given, use exactly
     dropout_alpha=None,       # Beta(alpha, beta) for frame-level dropout
     dropout_beta=None,
-    return_dropout=False
+    return_dropout=False,
+    do_dropout=False
 ):
     """
     Same angular mispoint for all rays. Pointing is modeled as a small rotation
@@ -231,9 +232,13 @@ def add_noise_with_global_pointing_and_range_dependent_error_and_dropout(
     p_noisy = u_tilted * d_noisy[:, None]
     V_n = V + v_noise
 
+
     X_n = p_noisy[:, 0]
     Y_n = p_noisy[:, 1]
     Z_n = p_noisy[:, 2]
+
+    if do_dropout == False:
+        return X_n, Y_n, Z_n, V_n
 
     # --- frame-level Beta dropout ---
     p_drop_frame = 0.0

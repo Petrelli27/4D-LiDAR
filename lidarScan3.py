@@ -65,7 +65,8 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
     Xn, Yn, Zn, Vn = lidarNoise.add_noise_with_global_pointing_and_range_dependent_error_and_dropout(Xs, Ys, Zs,
                                                                                                      v_los_s,
                                                                                                      dropout_alpha=1,
-                                                                                                     dropout_beta=20)
+                                                                                                     dropout_beta=20,
+                                                                                                     do_dropout=False)
 
     visualize = False
     if visualize == True:

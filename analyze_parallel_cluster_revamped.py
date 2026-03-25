@@ -222,6 +222,323 @@ def orientationupdate(dt, x_k):
     return q_kp1_pos
 
 
+def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k,
+                                  z_q_k_1, z_q_k_2, z_p_k_1, z_p_k_2,
+                                  associatedBbox_1, associatedBbox_2,
+                                  omega_LLS, omega_L_to_B, omega_los_L,
+                                  without_correction):
+    """Add state-estimate and measurement columns to a per-frame record dict."""
+
+    def add_vec(prefix, values, names):
+        if values is None:
+            values = [np.nan] * len(names)
+        values = np.asarray(values).reshape(-1)
+        for idx, name in enumerate(names):
+            record[f"{prefix}_{name}"] = float(values[idx]) if idx < len(values) else np.nan
+
+    # state estimate: [p, v, omega, p1, q]
+    add_vec("state_est", x_k[0:3], ["x", "y", "z"])
+    add_vec("state_est", x_k[3:6], ["vx", "vy", "vz"])
+    add_vec("state_est", x_k[6:9], ["wx", "wy", "wz"])
+    add_vec("state_est_p1", x_k[9:12], ["x", "y", "z"])
+    q_est = normalize_quat(np.asarray(x_k[12:16]).copy())
+    add_vec("state_est_q", q_est, ["w", "x", "y", "z"])
+
+    # main measurements
+    add_vec("meas_p", z_p_k, ["x", "y", "z"])
+    add_vec("meas_w", z_omega_k, ["x", "y", "z"])
+    add_vec("meas_p1", z_p1_k, ["x", "y", "z"])
+    add_vec("meas_q", normalize_quat(np.asarray(z_q_k).copy()), ["w", "x", "y", "z"])
+
+    raw_p = without_correction[i] if i < len(without_correction) else [np.nan, np.nan, np.nan]
+    add_vec("meas_p_raw", raw_p, ["x", "y", "z"])
+
+    # PCA-specific measurements
+    add_vec("meas_pca_p", z_p_k_1, ["x", "y", "z"])
+    add_vec("meas_pca_p1", associatedBbox_1[:, 0], ["x", "y", "z"])
+    add_vec("meas_pca_q", normalize_quat(np.asarray(z_q_k_1).copy()), ["w", "x", "y", "z"])
+
+    # RANSAC-specific measurements
+    add_vec("meas_ransac_p", z_p_k_2, ["x", "y", "z"])
+    p1_ransac = associatedBbox_2[:, 0] if associatedBbox_2 is not None else None
+    add_vec("meas_ransac_p1", p1_ransac, ["x", "y", "z"])
+    add_vec("meas_ransac_q", normalize_quat(np.asarray(z_q_k_2).copy()) if z_q_k_2 is not None else None, ["w", "x", "y", "z"])
+
+    # angular velocity diagnostics
+    add_vec("omega_lls", omega_LLS, ["x", "y", "z"])
+    add_vec("omega_l_to_b", omega_L_to_B, ["x", "y", "z"])
+    add_vec("omega_kabsch", omega_los_L, ["x", "y", "z"])
+
+    return record
+
+
+def add_truth_columns(record, i, debris_pos, debris_vel, omega_true, q_true):
+    """Add truth columns to a per-frame record dict."""
+
+    def add_vec(prefix, values, names):
+        if values is None:
+            values = [np.nan] * len(names)
+        values = np.asarray(values).reshape(-1)
+        for idx, name in enumerate(names):
+            record[f"{prefix}_{name}"] = float(values[idx]) if idx < len(values) else np.nan
+
+    p_true_i = debris_pos[i] if i < len(debris_pos) else None
+    v_true_i = debris_vel[i] if i < len(debris_vel) else None
+
+    if omega_true is None:
+        omega_true_i = None
+    else:
+        omega_true_arr = np.asarray(omega_true)
+        omega_true_i = omega_true_arr[i] if omega_true_arr.ndim > 1 and i < len(omega_true_arr) else omega_true_arr.reshape(-1)
+
+    q_true_i = q_true[i] if i < len(q_true) else None
+    if q_true_i is not None:
+        q_true_i = normalize_quat(np.asarray(q_true_i).copy())
+
+    add_vec("truth_p", p_true_i, ["x", "y", "z"])
+    add_vec("truth_v", v_true_i, ["x", "y", "z"])
+    add_vec("truth_w", omega_true_i, ["x", "y", "z"])
+    add_vec("truth_q", q_true_i, ["w", "x", "y", "z"])
+
+    return record
+
+
+def add_covariance_and_geometry_columns(record, P_k, debris_pos_i, Le, We, De):
+    """Add covariance diagonal, true range, and bbox dimensions to a per-frame record dict."""
+
+    cov_names = [
+        "x", "y", "z",
+        "vx", "vy", "vz",
+        "wx", "wy", "wz",
+        "p1_x", "p1_y", "p1_z",
+        "qw", "qx", "qy", "qz",
+    ]
+
+    if P_k is None:
+        diagP = np.full(len(cov_names), np.nan)
+    else:
+        try:
+            diagP = np.diag(np.asarray(P_k)).reshape(-1)
+        except Exception:
+            diagP = np.full(len(cov_names), np.nan)
+
+    for idx, name in enumerate(cov_names):
+        record[f"cov_{name}"] = float(diagP[idx]) if idx < len(diagP) else np.nan
+
+    if debris_pos_i is not None:
+        debris_pos_i = np.asarray(debris_pos_i).reshape(-1)
+        record["true_range"] = float(np.linalg.norm(debris_pos_i[:3])) if debris_pos_i.size >= 3 else np.nan
+    else:
+        record["true_range"] = np.nan
+
+    record["Le"] = float(Le) if Le is not None else np.nan
+    record["We"] = float(We) if We is not None else np.nan
+    record["De"] = float(De) if De is not None else np.nan
+
+    return record
+
+METHOD_PCA = 1
+METHOD_RANSAC = 2
+METHOD_PREDICTION = 3
+
+METHOD_CODE_TO_NAME = {
+    METHOD_PCA: "pca",
+    METHOD_RANSAC: "ransac",
+    METHOD_PREDICTION: "prediction",
+}
+
+METRIC_STAGE_NAMES = {
+    0: "inactive_startup",
+    1: "agree_ransac",
+    2: "ortho_ransac",
+    3: "eig_pca",
+    4: "boresight_pca",
+    5: "pred_fallback",
+}
+
+ORACLE_STATUS_NAMES = {
+    0: "startup",
+    1: "threshold_ransac",
+    2: "threshold_pca",
+    3: "threshold_pred",
+    4: "best_available_fallback",
+}
+
+AGREEMENT_NAMES = {
+    0: "none",
+    1: "pca_ransac",
+    2: "pca_pred",
+    3: "ransac_pred",
+    4: "all_three",
+    5: "mixed",
+}
+
+TRUE_PASS_PATTERN_NAMES = {
+    0: "none",
+    1: "pca_only",
+    2: "ransac_only",
+    3: "pred_only",
+    4: "pca_ransac",
+    5: "pca_pred",
+    6: "ransac_pred",
+    7: "all_three",
+}
+
+
+def _classify_pairwise_agreement(*, agree_pca_ransac, agree_pca_pred, agree_ransac_pred):
+    if agree_pca_ransac and agree_pca_pred and agree_ransac_pred:
+        return 4, AGREEMENT_NAMES[4]
+    pair_count = int(bool(agree_pca_ransac)) + int(bool(agree_pca_pred)) + int(bool(agree_ransac_pred))
+    if pair_count == 0:
+        return 0, AGREEMENT_NAMES[0]
+    if pair_count == 1:
+        if agree_pca_ransac:
+            return 1, AGREEMENT_NAMES[1]
+        if agree_pca_pred:
+            return 2, AGREEMENT_NAMES[2]
+        return 3, AGREEMENT_NAMES[3]
+    return 5, AGREEMENT_NAMES[5]
+
+
+def _classify_true_pass_pattern(*, pca_pass, ransac_pass, pred_pass):
+    key = (int(bool(pca_pass)), int(bool(ransac_pass)), int(bool(pred_pass)))
+    mapping = {
+        (0, 0, 0): 0,
+        (1, 0, 0): 1,
+        (0, 1, 0): 2,
+        (0, 0, 1): 3,
+        (1, 1, 0): 4,
+        (1, 0, 1): 5,
+        (0, 1, 1): 6,
+        (1, 1, 1): 7,
+    }
+    code = mapping[key]
+    return code, TRUE_PASS_PATTERN_NAMES[code]
+
+
+def select_measurement_method(*, i, start_index, ransac_pred_diff, pca_pred_diff, ransac_pca_diff,
+                              ransac_vecs_volume, pca_ratio, pca_angle, short_metric_thresh,
+                              orthonormal_thresh, eig_thresh, boresight_thresh):
+    metric_active = bool(i > start_index)
+
+    agree_ransac_pred = bool(ransac_pred_diff < short_metric_thresh)
+    agree_pca_pred = bool(pca_pred_diff < short_metric_thresh)
+    agree_pca_ransac = bool(ransac_pca_diff < short_metric_thresh)
+    agree_all_three = agree_ransac_pred and agree_pca_pred and agree_pca_ransac
+    agreement_code, agreement_name = _classify_pairwise_agreement(
+        agree_pca_ransac=agree_pca_ransac,
+        agree_pca_pred=agree_pca_pred,
+        agree_ransac_pred=agree_ransac_pred,
+    )
+
+    flag_ransac_ortho_pass = bool(ransac_vecs_volume > orthonormal_thresh)
+    flag_pca_eig_pass = bool(pca_ratio > eig_thresh)
+    flag_pca_boresight_pass = bool(pca_angle < boresight_thresh)
+
+    if i == 0:
+        choice_code = METHOD_RANSAC
+        stage_code = 0
+    elif metric_active:
+        if agree_pca_ransac:
+            choice_code = METHOD_RANSAC
+            stage_code = 1
+        elif flag_ransac_ortho_pass:
+            choice_code = METHOD_RANSAC
+            stage_code = 2
+        elif flag_pca_eig_pass:
+            choice_code = METHOD_PCA
+            stage_code = 3
+        elif flag_pca_boresight_pass:
+            choice_code = METHOD_PCA
+            stage_code = 4
+        else:
+            choice_code = METHOD_PREDICTION
+            stage_code = 5
+    else:
+        if ransac_pred_diff > pca_pred_diff:
+            choice_code = METHOD_PCA
+        else:
+            choice_code = METHOD_RANSAC
+        stage_code = 0
+
+    choice_name = METHOD_CODE_TO_NAME[choice_code]
+    stage_name = METRIC_STAGE_NAMES[stage_code]
+
+    return {
+        "metric_active": metric_active,
+        "choice_code": choice_code,
+        "choice_name": choice_name,
+        "stage_code": stage_code,
+        "stage_name": stage_name,
+        "short_metric_choice": f"{choice_name} {stage_code}",
+        "agree_pca_ransac": agree_pca_ransac,
+        "agree_pca_pred": agree_pca_pred,
+        "agree_ransac_pred": agree_ransac_pred,
+        "agree_all_three": agree_all_three,
+        "agreement_code": agreement_code,
+        "agreement_name": agreement_name,
+        "flag_ransac_ortho_pass": flag_ransac_ortho_pass,
+        "flag_pca_eig_pass": flag_pca_eig_pass,
+        "flag_pca_boresight_pass": flag_pca_boresight_pass,
+    }
+
+
+def select_oracle_method(*, i, ransac_true_diff, pca_true_diff, pred_true_diff, true_orientation_difference):
+    if i == 0:
+        choice_code = METHOD_RANSAC
+        status_code = 0
+        pca_pass = False
+        ransac_pass = False
+        pred_pass = False
+    else:
+        ransac_pass = bool(ransac_true_diff < true_orientation_difference)
+        pca_pass = bool(pca_true_diff < true_orientation_difference)
+        pred_pass = bool(pred_true_diff < true_orientation_difference)
+
+        if ransac_pass:
+            choice_code = METHOD_RANSAC
+            status_code = 1
+        elif pca_pass:
+            choice_code = METHOD_PCA
+            status_code = 2
+        elif pred_pass:
+            choice_code = METHOD_PREDICTION
+            status_code = 3
+        else:
+            values = [pca_true_diff, ransac_true_diff, pred_true_diff]
+            choice_code = int(np.argmin(values)) + 1
+            status_code = 4
+
+    choice_name = METHOD_CODE_TO_NAME[choice_code]
+    status_name = ORACLE_STATUS_NAMES[status_code]
+    true_pass_pattern_code, true_pass_pattern_name = _classify_true_pass_pattern(
+        pca_pass=pca_pass,
+        ransac_pass=ransac_pass,
+        pred_pass=pred_pass,
+    )
+
+    if status_code == 4:
+        perfect_metric_choice = "all wrong"
+    elif status_code == 0:
+        perfect_metric_choice = "first"
+    else:
+        perfect_metric_choice = choice_name
+
+    return {
+        "choice_code": choice_code,
+        "choice_name": choice_name,
+        "status_code": status_code,
+        "status_name": status_name,
+        "perfect_metric_choice": perfect_metric_choice,
+        "pass_pca": pca_pass,
+        "pass_ransac": ransac_pass,
+        "pass_pred": pred_pass,
+        "pass_all_three": bool(pca_pass and ransac_pass and pred_pass),
+        "true_pass_pattern_code": true_pass_pattern_code,
+        "true_pass_pattern_name": true_pass_pattern_name,
+    }
+
+
 def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
 
     Rot_0 = quat2rotm(q_ini)
@@ -472,47 +789,20 @@ def run(pickle_file, configs, logger):
 
 
     # data gathering
-    master_file = pd.DataFrame(columns=configs['master_file_columns'])
-    # various columns
-    file_names = []
-    ransac_errors = []
-    pca_errors = []
-    prediction_errors = []
-    perfect_metric_choices = []
+    frame_records = []
     short_metric_choices = []
-    number_of_pointss = []
-    points_diffs = []
-    z_spreads = []
-    x_spreads = []
-    y_spreads = []
-    pca_prev_diffs = []
-    ransac_prev_diffs = []
-    x_spread_diffs = []
-    y_spread_diffs = []
-    z_spread_diffs = []
-    ransac_pca_diffs = []
-    pca_pred_diffs = []
-    ransac_pred_diffs = []
+    perfect_metric_choices = []
+    assignment_records = []
 
-    metric_boxes = {"pca 0": [0, 0, 0, 0, 0],
-               "ransac 0": [0, 0, 0, 0, 0],
-               "ransac 1": [0, 0, 0, 0, 0],
-               "ransac 2": [0, 0, 0, 0, 0],
-               "pca 3": [0, 0, 0, 0, 0],
-               "pred 4": [0, 0, 0, 0, 0],
-               "pca 5": [0, 0, 0, 0, 0],
-               "ransac 6": [0, 0, 0, 0, 0],
-               "ransac 7": [0, 0, 0, 0, 0],
-               "ransac 8": [0, 0, 0, 0, 0]}
-    
     for i in range(nframes): 
         PL=((Rot_L_to_B[i].T @ (PBs[i]).T).T)
         # find bounding box from points
         X_i = PL[:,0]
         Y_i = PL[:,1]
         Z_i = PL[:,2]
-        z_pi_k_1, z_p_k_1, R_1, evecs, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
         z_q_k_1 = rotm2quat(R_1)
+        evecs = R_1.copy()
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, z_q_k_1, True, False)
         if R_1_2.size == 0:
             ransac_error = True
@@ -530,6 +820,9 @@ def run(pickle_file, configs, logger):
     # q_ini = q_true[0,:]
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     for i in range(nframes):
+        Le = np.nan
+        We = np.nan
+        De = np.nan
 
         if rank == 0:
             pass
@@ -645,7 +938,8 @@ def run(pickle_file, configs, logger):
         #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
 
         # Return bounding box and centroid estimate of bounding box
-        z_pi_k_1, z_p_k_1, R_1, evecs, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+        evecs = R_1.copy()
         if i == 0:
             q_kp1 = rotm2quat(R_1)
         z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
@@ -661,7 +955,7 @@ def run(pickle_file, configs, logger):
             n1 = normal_vecs[1] / np.linalg.norm(normal_vecs[1])
             n2 = normal_vecs[2] / np.linalg.norm(normal_vecs[2])
             ransac_vecs_volume = abs(np.linalg.det(np.array([n0, n1, n2])))
-        ransac_orthos[i] = ransac_vecs_volume
+        ransac_orthos.append(ransac_vecs_volume)
 
         ############
         # bias removal
@@ -747,6 +1041,19 @@ def run(pickle_file, configs, logger):
             if not ransac_error:
                 z_q_k_2_previous = z_q_k_2.copy()
 
+        # Default metric inputs so the selector functions can be called safely on
+        # the first frame and during startup before all comparisons are available.
+        ransac_pred_diff = np.nan
+        pca_pred_diff = np.nan
+        ransac_pca_diff = np.nan
+        ransac_prev_diff = np.nan
+        pca_prev_diff = np.nan
+        ransac_true_diff = np.nan
+        pca_true_diff = np.nan
+        pred_true_diff = np.nan
+        pca_ratio = 0.0
+        pca_angle = 0.0
+
         if i > 0:
             ###########################################################################3
             if not ransac_error:
@@ -776,68 +1083,48 @@ def run(pickle_file, configs, logger):
 
             # pca metric
             pca_ratio = eigenvalue_metric(evals)
-            pca_ratios[i] = pca_ratio
-            pca_angle = np.degree(boresight_metric(Rot_L_to_B[i], evecs))
-            pca_angles[i] = pca_angle
+            pca_ratios.append(pca_ratio)
+            pca_angle = np.rad2deg(boresight_metric(Rot_L_to_B[i], evecs))
+            pca_angles.append(pca_angle)
         if i == 0:
-            use_measurement = 2  # ransac by default
-            short_metric_choice = "ransac 0"
-        elif i > configs['start']:
-            # short metric
-            RP = ransac_pred_diff < short_metric_thresh
-            CP = pca_pred_diff < short_metric_thresh
-            RC = ransac_pca_diff < short_metric_thresh
-            if RC:
-                use_measurement = 2
-                short_metric_choice = "ransac 1"
-            elif ransac_vecs_volume > orthonormal_thresh:
-                use_measurement = 2
-                short_metric_choice = "ransac 2"
-            elif pca_ratio > configs["eig thresh"]:
-                use_measurement = 1
-                short_metric_choice = "pca 1"
-            elif pca_angle < configs["boresight thresh"]:
-                use_measurement = 1
-                short_metric_choice = "pca 1"
-            else:
-                use_measurement = 3
-                short_metric_choice = "pred 4"
-        else:  # at the start, don't use prediction
-            if ransac_pred_diff > pca_pred_diff:
-                use_measurement = 1
-                short_metric_choice = "pca 0"
-            else:
-                use_measurement = 2
-                short_metric_choice = "ransac 0"
-        metric_boxes[short_metric_choice][0] += 1
+            pca_ratios.append(0.0)
+            pca_angles.append(0.0)
+
+        metric_result = select_measurement_method(
+            i=i,
+            start_index=configs['start'],
+            ransac_pred_diff=ransac_pred_diff,
+            pca_pred_diff=pca_pred_diff,
+            ransac_pca_diff=ransac_pca_diff,
+            ransac_vecs_volume=ransac_vecs_volume,
+            pca_ratio=pca_ratios[-1] if len(pca_ratios) > 0 else 0.0,
+            pca_angle=pca_angles[-1] if len(pca_angles) > 0 else 0.0,
+            short_metric_thresh=configs['short_metric_thresh'],
+            orthonormal_thresh=configs['orthonormal_thresh'],
+            eig_thresh=configs['eig_thresh'],
+            boresight_thresh=configs['boresight_thresh'],
+        )
+        use_measurement = metric_result['choice_code']
+        short_metric_choice = metric_result['short_metric_choice']
         short_metric_choices.append(short_metric_choice)
 
-        if i == 0:
-            ideal_measurement = 2
-            perfect_metric_choice = 'first'
-        else:
-            if ransac_true_diff < configs['true_orientation_difference']:
-                ideal_measurement = 2
-                perfect_metric_choice = "ransac"
-                metric_boxes[short_metric_choice][2] += 1
-            else:
-                if pca_true_diff < configs['true_orientation_difference']:
-                    ideal_measurement = 1
-                    perfect_metric_choice = "pca"
-                    metric_boxes[short_metric_choice][1] += 1
-                else:
-                    if pred_true_diff < configs['true_orientation_difference']:
-                        ideal_measurement= 3
-                        perfect_metric_choice = "pred"
-                        metric_boxes[short_metric_choice][3] += 1
-                    else:
-                        values = [pca_true_diff, ransac_true_diff, pred_true_diff]
-                        min_index, min_value = min(enumerate(values), key=lambda x: x[1])
-                        ideal_measurement = min_index + 1  # we want from 1 to 3
-                        perfect_metric_choice = "all wrong"
-                        metric_boxes[short_metric_choice][4] += 1
+        oracle_result = select_oracle_method(
+            i=i,
+            ransac_true_diff=ransac_true_diff,
+            pca_true_diff=pca_true_diff,
+            pred_true_diff=pred_true_diff,
+            true_orientation_difference=configs['true_orientation_difference'],
+        )
+        ideal_measurement = oracle_result['choice_code']
+        perfect_metric_choice = oracle_result['perfect_metric_choice']
         perfect_metric_choices.append(perfect_metric_choice)
 
+        metric_matches_oracle = bool(metric_result['choice_code'] == oracle_result['choice_code'])
+        oracle_override_enabled = bool(configs['use_perfect_metric'])
+        metric_overridden_by_oracle = bool(oracle_override_enabled and not metric_matches_oracle)
+
+        final_choice_code = oracle_result['choice_code'] if oracle_override_enabled else metric_result['choice_code']
+        final_choice_name = METHOD_CODE_TO_NAME[final_choice_code]
         if configs['use_perfect_metric']:
             use_measurement = ideal_measurement
         if use_measurement == 2:
@@ -892,6 +1179,9 @@ def run(pickle_file, configs, logger):
         omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
         B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
 
+        omega_LLS = np.zeros(3)
+        omega_los_L = np.zeros(3)
+
         # find angular velocity from LOS velocities
         if i > 0:
             # 1. Linear Least Squares
@@ -903,7 +1193,6 @@ def run(pickle_file, configs, logger):
         # 3. Kabsch
         ################ to use Kabsch you need i > 0, to wait for state initializations?
         if i == 0:
-            omega_los_L = np.array([0, 0, 0])
             prev_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
             prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
         else:
@@ -951,6 +1240,7 @@ def run(pickle_file, configs, logger):
         if i == 0:
             x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])  # state
             P_k = P_0.copy()  # covariance matrix
+            Le, We, De = get_dimensions(x_k[9:12], x_k[0:3], x_k[12:16])
 
         num_meas = len(z_kp1)
 
@@ -1070,83 +1360,141 @@ def run(pickle_file, configs, logger):
         x_s.append(x_k)
         estimated_pos.append(x_k[:3])
 
-        # Append data for master file
-        file_names.append(pickle_file)
-        if i == 0:
-            ransac_errors.append(0)
-            pca_errors.append(0)
-            prediction_errors.append(0)
-        else:
-            ransac_errors.append(ransac_true_diff)
-            pca_errors.append(pca_true_diff)
-            prediction_errors.append(pred_true_diff)
-        number_of_pointss.append(num_points)
-        if i == 0:
-            points_diffs.append(0)
-        else:
-            points_diffs.append(num_points - number_of_pointss[i - 1])
-        z_spreads.append(max(Z_i) - min(Z_i))
-        x_spreads.append(max(X_i) - min(X_i))
-        y_spreads.append((max(Y_i) - min(Y_i)))
-        if i == 0:
-            pca_prev_diffs.append(0)
-            ransac_prev_diffs.append(0)
-            ransac_pred_diffs.append(0)
-            pca_pred_diffs.append(0)
-            ransac_pca_diffs.append(0)             
-        else:
-            pca_prev_diffs.append(pca_prev_diff)
-            ransac_prev_diffs.append(ransac_prev_diff)
-            ransac_pca_diffs.append(ransac_pca_diff)
-            ransac_pred_diffs.append(ransac_pred_diff)
-            pca_pred_diffs.append(pca_pred_diff)
-        if i == 0:
-            x_spread_diffs.append(0)
-            y_spread_diffs.append(0)
-            z_spread_diffs.append(0)
-        else:
-            x_spread_diffs.append(x_spreads[i] - x_spreads[i-1])
-            y_spread_diffs.append(y_spreads[i] - y_spreads[i - 1])
-            z_spread_diffs.append(z_spreads[i] - z_spreads[i - 1])
-        if (not RC_flag) and i>configs['start'] and RC:
+        # Append data for output file
+        record = {
+            'file_name': pickle_file,
+            'ransac_error': 0 if i == 0 else ransac_true_diff,
+            'pca_error': 0 if i == 0 else pca_true_diff,
+            'prediction_error': 0 if i == 0 else pred_true_diff,
+            'perfect_metric_choice': perfect_metric_choice,
+            'short_metric_choice': short_metric_choice,
+            'number_of_points': num_points,
+            'pca_prev_diff': 0 if i == 0 else pca_prev_diff,
+            'ransac_prev_diff': 0 if i == 0 else ransac_prev_diff,
+            'ransac_pca_diff': 0 if i == 0 else ransac_pca_diff,
+            'ransac_pred_diff': 0 if i == 0 else ransac_pred_diff,
+            'pca_pred_diff': 0 if i == 0 else pca_pred_diff,
+            'estimate_error': rotation_errors[-1] if len(rotation_errors) > 0 else np.nan,
+            'ransac_orthogonality': ransac_orthos[-1] if len(ransac_orthos) > 0 else np.nan,
+            'pca_ratio': pca_ratios[-1] if len(pca_ratios) > 0 else np.nan,
+            'pca_angle': pca_angles[-1] if len(pca_angles) > 0 else np.nan,
+            'metric_active': metric_result['metric_active'],
+            'metric_choice_code': metric_result['choice_code'],
+            'metric_choice_name': metric_result['choice_name'],
+            'metric_stage_code': metric_result['stage_code'],
+            'metric_stage_name': metric_result['stage_name'],
+            'agreement_code': metric_result['agreement_code'],
+            'agreement_name': metric_result['agreement_name'],
+            'agree_pca_ransac': metric_result['agree_pca_ransac'],
+            'agree_pca_pred': metric_result['agree_pca_pred'],
+            'agree_ransac_pred': metric_result['agree_ransac_pred'],
+            'agree_all_three': metric_result['agree_all_three'],
+            'flag_ransac_ortho_pass': metric_result['flag_ransac_ortho_pass'],
+            'flag_pca_eig_pass': metric_result['flag_pca_eig_pass'],
+            'flag_pca_boresight_pass': metric_result['flag_pca_boresight_pass'],
+            'oracle_choice_code': oracle_result['choice_code'],
+            'oracle_choice_name': oracle_result['choice_name'],
+            'oracle_status_code': oracle_result['status_code'],
+            'oracle_status_name': oracle_result['status_name'],
+            'oracle_pass_pca': oracle_result['pass_pca'],
+            'oracle_pass_ransac': oracle_result['pass_ransac'],
+            'oracle_pass_pred': oracle_result['pass_pred'],
+            'oracle_pass_all_three': oracle_result['pass_all_three'],
+            'true_pass_pattern_code': oracle_result['true_pass_pattern_code'],
+            'true_pass_pattern_name': oracle_result['true_pass_pattern_name'],
+            'metric_matches_oracle': metric_matches_oracle,
+            'oracle_override_enabled': oracle_override_enabled,
+            'metric_overridden_by_oracle': metric_overridden_by_oracle,
+            'final_choice_code': final_choice_code,
+            'final_choice_name': final_choice_name,
+        }
+
+        record = add_state_measurement_columns(
+            record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k,
+            z_q_k_1, None if ransac_error else z_q_k_2,
+            z_p_k_1, None if ransac_error else z_p_k_2,
+            associatedBbox_1, None if ransac_error else associatedBbox_2,
+            omega_LLS, omega_L_to_B, omega_los_L, without_correction
+        )
+        record = add_truth_columns(record, i, debris_pos, debris_vel, omega_true, q_true)
+        record = add_covariance_and_geometry_columns(record, P_k, debris_pos[i] if i < len(debris_pos) else None, Le, We, De)
+        frame_records.append(record)
+        assignment_records.append({
+            'frame': i,
+            'file_name': pickle_file,
+            'metric_active': metric_result['metric_active'],
+            'metric_choice_code': metric_result['choice_code'],
+            'metric_choice_name': metric_result['choice_name'],
+            'metric_stage_code': metric_result['stage_code'],
+            'metric_stage_name': metric_result['stage_name'],
+            'agreement_code': metric_result['agreement_code'],
+            'agreement_name': metric_result['agreement_name'],
+            'agree_pca_ransac': metric_result['agree_pca_ransac'],
+            'agree_pca_pred': metric_result['agree_pca_pred'],
+            'agree_ransac_pred': metric_result['agree_ransac_pred'],
+            'agree_all_three': metric_result['agree_all_three'],
+            'oracle_choice_code': oracle_result['choice_code'],
+            'oracle_choice_name': oracle_result['choice_name'],
+            'oracle_status_code': oracle_result['status_code'],
+            'oracle_status_name': oracle_result['status_name'],
+            'oracle_pass_pca': oracle_result['pass_pca'],
+            'oracle_pass_ransac': oracle_result['pass_ransac'],
+            'oracle_pass_pred': oracle_result['pass_pred'],
+            'oracle_pass_all_three': oracle_result['pass_all_three'],
+            'true_pass_pattern_code': oracle_result['true_pass_pattern_code'],
+            'true_pass_pattern_name': oracle_result['true_pass_pattern_name'],
+            'metric_matches_oracle': metric_matches_oracle,
+            'oracle_override_enabled': oracle_override_enabled,
+            'metric_overridden_by_oracle': metric_overridden_by_oracle,
+            'final_choice_code': final_choice_code,
+            'final_choice_name': final_choice_name,
+        })
+        if (not RC_flag) and i > configs['start'] and metric_result['agree_pca_ransac']:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
             q_true = smoothen_q(q_true)
 
     # Create final dataframe
-    master_file['file_name'] = file_names
-    master_file['ransac_error'] = ransac_errors
-    master_file['pca_error'] = pca_errors
-    master_file['prediction_error'] = prediction_errors
-    master_file['perfect_metric_choice'] = perfect_metric_choices
-    master_file['short_metric_choice'] = short_metric_choices
-    master_file['number_of_points'] = number_of_pointss
-    master_file['points_diff'] = points_diffs
-    master_file['z_spread'] = z_spreads
-    master_file['x_spread'] = x_spreads
-    master_file['y_spread'] = y_spreads
-    master_file['pca_prev_diff'] = pca_prev_diffs
-    master_file['ransac_prev_diff'] = ransac_prev_diffs
-    master_file['x_spread_diff'] = x_spread_diffs
-    master_file['y_spread_diff'] = y_spread_diffs
-    master_file['z_spread_diff'] = z_spread_diffs
-    master_file['ransac_pca_diff'] = ransac_pca_diffs
-    master_file['ransac_pred_diff'] = ransac_pred_diffs
-    master_file['pca_pred_diff'] = pca_pred_diffs
-    master_file['estimate_error'] = rotation_errors
-    master_file['ransac_orthogonality'] = ransac_orthos
-    master_file['pca_ratio'] = pca_ratios
-    master_file['pca_angle'] = pca_angles
+    master_file = pd.DataFrame(frame_records)
+    if 'master_file_columns' in configs:
+        existing_columns = [col for col in configs['master_file_columns'] if col in master_file.columns]
+        extra_columns = [col for col in master_file.columns if col not in existing_columns]
+        master_file = master_file.reindex(columns=existing_columns + extra_columns)
 
     os.makedirs('full_results', exist_ok=True)
     master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
 
     ######
-    # box assigment experiment
+    # metric assignment experiment
     #####
-    assignment_results = pd.DataFrame(metric_boxes)
+    assignment_results = pd.DataFrame(assignment_records)
     os.makedirs('assignment_results', exist_ok=True)
-    assignment_results.to_csv('assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
+    assignment_path = 'assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv'
+    assignment_results.to_csv(assignment_path, sep=',', header=True, index=False)
+
+    if not assignment_results.empty:
+        assignment_summary = (
+            assignment_results
+            .groupby([
+                'metric_stage_name',
+                'metric_choice_name',
+                'oracle_choice_name',
+                'true_pass_pattern_name',
+                'agreement_name',
+                'final_choice_name',
+            ], dropna=False)
+            .size()
+            .reset_index(name='count')
+        )
+    else:
+        assignment_summary = pd.DataFrame(columns=[
+            'metric_stage_name', 'metric_choice_name', 'oracle_choice_name',
+            'true_pass_pattern_name', 'agreement_name', 'final_choice_name', 'count'
+        ])
+    assignment_summary.to_csv(
+        'assignment_results/summary_' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv',
+        sep=',', header=True, index=False
+    )
 
     ##############
     # Plot relevant figures

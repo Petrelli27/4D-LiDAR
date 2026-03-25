@@ -1,5 +1,3 @@
-from functorch.dim import use_c
-
 import dynamics
 import matplotlib.pyplot as plt
 import numpy as np
@@ -114,7 +112,6 @@ def get_initial_conditions(conditions_count=100):
             nframes = 250
 
         _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion)
-        print(d)
         if max(d) > 500 or min(d) < 5:
             # too far, avoid appending this result
             continue
@@ -173,10 +170,10 @@ def run_single_simulation(rank, sim_parameters, sim_index):
     res_box = 7
 
     # load debris mesh
-    # debris_file = 'kompsat-1-v9.stl'
+    debris_file = 'kompsat-1-v9.stl'
     # debris_file = 'observer-cubesat-v7.stl'
     # debris_file = 'observer-cubesat-scaled.stl'
-    debris_file = 'observer-cubesat-scaled-v2.stl'
+    # debris_file = 'observer-cubesat-scaled-v2.stl'
 
     XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs, partials = [], [], [], [], [], [], []
 
