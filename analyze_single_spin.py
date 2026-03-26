@@ -224,7 +224,8 @@ def orientationupdate(dt, x_k):
     return q_kp1_pos
 
 
-def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k,
+def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k, 
+                                  z_pg_k, z_pg_k_1, z_pg_k_2,
                                   z_q_k_1, z_q_k_2, z_p_k_1, z_p_k_2,
                                   associatedBbox_1, associatedBbox_2,
                                   omega_LLS, omega_L_to_B, omega_los_L,
@@ -245,12 +246,14 @@ def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_
     add_vec("state_est_p1", x_k[9:12], ["x", "y", "z"])
     q_est = normalize_quat(np.asarray(x_k[12:16]).copy())
     add_vec("state_est_q", q_est, ["w", "x", "y", "z"])
+    add_vec("state_est_pg", x_k[16:19],["x","y","z"])
 
     # main measurements
     add_vec("meas_p", z_p_k, ["x", "y", "z"])
     add_vec("meas_w", z_omega_k, ["x", "y", "z"])
     add_vec("meas_p1", z_p1_k, ["x", "y", "z"])
     add_vec("meas_q", normalize_quat(np.asarray(z_q_k).copy()), ["w", "x", "y", "z"])
+    add_vec("meas_pg", z_pg_k,["x","y","z"])
 
     raw_p = without_correction[i] if i < len(without_correction) else [np.nan, np.nan, np.nan]
     add_vec("meas_p_raw", raw_p, ["x", "y", "z"])
@@ -259,12 +262,14 @@ def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_
     add_vec("meas_pca_p", z_p_k_1, ["x", "y", "z"])
     add_vec("meas_pca_p1", associatedBbox_1[:, 0], ["x", "y", "z"])
     add_vec("meas_pca_q", normalize_quat(np.asarray(z_q_k_1).copy()), ["w", "x", "y", "z"])
+    add_vec("meas_pca_pg", z_pg_k_1, ["x", "y", "z"])
 
     # RANSAC-specific measurements
     add_vec("meas_ransac_p", z_p_k_2, ["x", "y", "z"])
     p1_ransac = associatedBbox_2[:, 0] if associatedBbox_2 is not None else None
     add_vec("meas_ransac_p1", p1_ransac, ["x", "y", "z"])
     add_vec("meas_ransac_q", normalize_quat(np.asarray(z_q_k_2).copy()) if z_q_k_2 is not None else None, ["w", "x", "y", "z"])
+    add_vec("meas_ransac_pg", z_pg_k_2, ["x", "y", "z"])
 
     # angular velocity diagnostics
     add_vec("omega_lls", omega_LLS, ["x", "y", "z"])
@@ -314,6 +319,7 @@ def add_covariance_and_geometry_columns(record, P_k, debris_pos_i, Le, We, De):
         "wx", "wy", "wz",
         "p1_x", "p1_y", "p1_z",
         "qw", "qx", "qy", "qz",
+        "pg_x", "pg_y", "pg_z"
     ]
 
     if P_k is None:
@@ -639,6 +645,50 @@ def boresight_metric(Rot_L_to_B, evecs):
 
     return np.min(angles)
 
+def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega, p, threshold=0.1):
+    """
+    Estimate the center of mass from the geometric bounding box centroid.
+
+    Points where the LOS velocity residual (VLs_i - v_k) is near zero lie on a
+    plane passing through the COM. We fit that plane and project z_pg_k onto it.
+
+    Args:
+        z_pg_k:    (3,) geometric centroid of bounding box, in frame L
+        v_k:       (3,) estimated COM translational velocity, in frame L
+        Vs_i:     (N, ) array of line-of-sight speeds
+        PLs_i:     (N, 3) array of point cloud positions, in frame L
+        omega      (3,) angular velocity of L with respect to B, from prediction?
+        p          (3,) position of debris relative to B, from prediction?
+        threshold: scalar, max residual magnitude to select near-zero points
+
+    Returns:
+        z_p_k: (3,) estimated center of mass position, or z_pg_k if fallback
+    """
+    # Select points where LOS velocity is explained by translation alone
+    u_los = PLs_i / np.linalg.norm(PLs_i, axis=1, keepdims=True)  # (N, 3)
+    v_k_projected = u_los @ (v_k + np.cross(omega,p))       # (N,) scalar
+    residuals = Vs_i - v_k_projected                       # (N,) scalar (omega cross r) \dot LoS
+    mask = np.abs(residuals) < threshold
+    near_zero_points = PLs_i[mask]
+
+    # Fallback: not enough points to fit a plane
+    if np.sum(mask) < 3:
+        return z_pg_k.copy(), near_zero_points
+
+    # Fit plane via SVD on mean-centered near-zero points
+    centroid = np.mean(near_zero_points, axis=0)
+    _, _, Vt = np.linalg.svd(near_zero_points - centroid)
+    v1 = Vt[0]  # line vector
+    v2 = centroid / np.linalg.norm(centroid) # vector from lidar to center of near-zero point cloud
+    normal = np.cross(v1, v2)
+    n_hat = normal / np.linalg.norm(normal) # normalize vector
+
+    # Project z_pg_k onto the plane: move it along n_hat by signed distance d
+    d = np.dot(n_hat, z_pg_k - centroid)
+    z_p_k = z_pg_k - d * n_hat
+    print(near_zero_points)
+    return z_p_k, near_zero_points
+
 def run(pickle_file, configs, logger):
 
     # initialize debris position, velocity and orientation
@@ -670,7 +720,6 @@ def run(pickle_file, configs, logger):
     YLs = []
     ZLs = []
     PLs = []  # store x, y, z point cloud in L
-    VLs = VBs  # store velocity point cloud
     x_s = []  # store states over time
     z_s = []  # store measurements over time
     P_s = []  # store covariances in time
@@ -722,7 +771,7 @@ def run(pickle_file, configs, logger):
     # Measurement matrix
     H1 = np.zeros([len(P_0)-3, len(P_0)])  # no measuring of velocity
     H1[0:3,0:3] = np.eye(3)
-    H1[3:,6:] = np.eye(16)
+    H1[3:,6:] = np.eye(13)
     bad_attitude_measurement_flag = False
     adapt = False
 
@@ -945,8 +994,14 @@ def run(pickle_file, configs, logger):
             q_kp1 = rotm2quat(R_1)
         z_pi_k_2, z_pg_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
-        z_p_k_1 = find_center_of_mass(z_pg_k_1, v_k, VBs[i])
-        z_p_k_2 = find_center_of_mass(z_pg_k_2, v_k, VBs[i])
+        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+
+        if i == 0: 
+            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, v_k, VBs[i], PLs[i], omega_L_to_B, z_pg_k_1)
+            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, v_k, VBs[i], PLs[i], omega_L_to_B, z_pg_k_2)
+        else:
+            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, debris_pos[i])
+            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, debris_pos[i])
         
         if R_1_2.size == 0:
             ransac_error = True
@@ -1506,6 +1561,8 @@ def run(pickle_file, configs, logger):
 
             # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
             ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
+            ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='r', label='COM')
+            ax.scatter(near_zero_points[:,0], near_zero_points[:,1], near_zero_points[:,2], color='c', label="near zero")
             ax.scatter(debris_pos[i,0], debris_pos[i,1], debris_pos[i,2], color='g', label='True Position')
             ax.legend()
             ax.set_aspect('equal', 'box')
@@ -1573,7 +1630,8 @@ def run(pickle_file, configs, logger):
         }
 
         record = add_state_measurement_columns(
-            record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k,
+            record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_k, 
+            z_pg_k, z_pg_k_1, z_pg_k_2,
             z_q_k_1, None if ransac_error else z_q_k_2,
             z_p_k_1, None if ransac_error else z_p_k_2,
             associatedBbox_1, None if ransac_error else associatedBbox_2,

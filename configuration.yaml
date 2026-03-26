@@ -40,6 +40,7 @@ master_file_columns: [
     "state_est_wx", "state_est_wy", "state_est_wz",
     "state_est_p1_x", "state_est_p1_y", "state_est_p1_z",
     "state_est_qw", "state_est_qx", "state_est_qy", "state_est_qz",
+    "state_est_pg_x", "state_est_pg_y", "state_est_pg_z",
 
     # --- covariance (diag P_k) ---
     "cov_x", "cov_y", "cov_z",
@@ -47,6 +48,7 @@ master_file_columns: [
     "cov_wx", "cov_wy", "cov_wz",
     "cov_p1_x", "cov_p1_y", "cov_p1_z",
     "cov_qw", "cov_qx", "cov_qy", "cov_qz",
+    "cov_pg_x", "cov_pg_y", "cov_pg_z",
 
     # --- fused measurements ---
     "meas_p_x", "meas_p_y", "meas_p_z",
@@ -54,16 +56,19 @@ master_file_columns: [
     "meas_wx", "meas_wy", "meas_wz",
     "meas_p1_x", "meas_p1_y", "meas_p1_z",
     "meas_qw", "meas_qx", "meas_qy", "meas_qz",
+    "meas_pg_x", "meas_pg_y", "meas_pg_z",
 
     # --- PCA measurements ---
     "meas_pca_p_x", "meas_pca_p_y", "meas_pca_p_z",
     "meas_pca_p1_x", "meas_pca_p1_y", "meas_pca_p1_z",
     "meas_pca_qw", "meas_pca_qx", "meas_pca_qy", "meas_pca_qz",
+    "meas_pca_pg_x", "meas_pca_pg_y", "meas_pca_pg_z",
 
     # --- RANSAC measurements ---
     "meas_ransac_p_x", "meas_ransac_p_y", "meas_ransac_p_z",
     "meas_ransac_p1_x", "meas_ransac_p1_y", "meas_ransac_p1_z",
     "meas_ransac_qw", "meas_ransac_qx", "meas_ransac_qy", "meas_ransac_qz",
+    "meas_ransac_pg_x", "meas_ransac_pg_y", "meas_ransac_pg_z",
 
     # --- angular velocity diagnostics ---
     "omega_lls_x", "omega_lls_y", "omega_lls_z",
