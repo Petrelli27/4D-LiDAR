@@ -645,7 +645,7 @@ def boresight_metric(Rot_L_to_B, evecs):
 
     return np.min(angles)
 
-def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega, p, threshold=0.1):
+def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_BL, omega_LD, p, threshold=0.1):
     """
     Estimate the center of mass from the geometric bounding box centroid.
 
@@ -654,7 +654,7 @@ def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega, p, threshold=0.1):
 
     Args:
         z_pg_k:    (3,) geometric centroid of bounding box, in frame L
-        v_k:       (3,) estimated COM translational velocity, in frame L
+        v_k:       (3,) estimated COM translational velocity, with respect to frame L, expressed in frame L
         Vs_i:     (N, ) array of line-of-sight speeds
         PLs_i:     (N, 3) array of point cloud positions, in frame L
         omega      (3,) angular velocity of L with respect to B, from prediction?
@@ -665,9 +665,15 @@ def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega, p, threshold=0.1):
         z_p_k: (3,) estimated center of mass position, or z_pg_k if fallback
     """
     # Select points where LOS velocity is explained by translation alone
+    v_LD = v_k
     u_los = PLs_i / np.linalg.norm(PLs_i, axis=1, keepdims=True)  # (N, 3)
-    v_k_projected = u_los @ (v_k + np.cross(omega,p))       # (N,) scalar
-    residuals = Vs_i - v_k_projected                       # (N,) scalar (omega cross r) \dot LoS
+    centered_points = PLs_i - p                                                 # (N, 3) r - p
+    v_com_apparent = v_LD + np.cross(omega_BL, p)                               # (3,)
+    omega_BD_cross = np.cross(omega_BL + omega_LD, centered_points)             # (N, 3)
+    v_total = v_com_apparent + omega_BD_cross                                   # (N, 3)
+    v_projected = np.sum(u_los * v_total, axis=1)                               # (N,)
+
+    residuals = Vs_i - v_projected                                              # (N,)
     mask = np.abs(residuals) < threshold
     near_zero_points = PLs_i[mask]
 
@@ -997,11 +1003,13 @@ def run(pickle_file, configs, logger):
         omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
 
         if i == 0: 
-            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, v_k, VBs[i], PLs[i], omega_L_to_B, z_pg_k_1)
-            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, v_k, VBs[i], PLs[i], omega_L_to_B, z_pg_k_2)
+            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
+            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
         else:
-            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, debris_pos[i])
-            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, debris_pos[i])
+            # z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, v_k, VBs[i], PLs[i], omega_L_to_B, x_k[6:9], x_kp1[0:3])
+            # z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, v_k, VBs[i], PLs[i], omega_L_to_B, x_k[6:9], x_kp1[0:3])
+            z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
+            z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
         
         if R_1_2.size == 0:
             ransac_error = True
