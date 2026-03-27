@@ -692,7 +692,7 @@ def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_BL, omega_LD, p, thresho
     # Project z_pg_k onto the plane: move it along n_hat by signed distance d
     d = np.dot(n_hat, z_pg_k - centroid)
     z_p_k = z_pg_k - d * n_hat
-    print(near_zero_points)
+    # print(near_zero_points)
     return z_p_k, near_zero_points
 
 def run(pickle_file, configs, logger):

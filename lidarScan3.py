@@ -53,7 +53,8 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
         omega_L_to_B = (angle_B_to_B * axis_B_to_B) / dt
 
     v_rel_B = v_rel + np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
-    v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel_B, u_los.T)
+    # v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel_B, u_los.T) # this is incomplete
+    v_los_s = np.dot(v_rel_B, u_los.T) + np.sum(np.cross(omega + omega_L_to_B, r) * u_los, axis=1)
     v_los_v = u_los * v_los_s[:, np.newaxis]
 
     # Add noise to lidar scan results
