@@ -45,16 +45,16 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
     Rlb = Rot_L_to_B_prev.T @ Rot_L_to_B  # shorthand
     angle_B_to_B = 2 * np.arctan2(np.linalg.norm(Rlb - Rlb.T) / 2, 1)
     if angle_B_to_B < 1e-3:
-        omega_L_to_B = np.array([0, 0, 0])
+        omega_LB = np.array([0, 0, 0])
     else:
         axis_B_to_B = 1. / (2 * np.sin(angle_B_to_B)) * np.array(
             [Rlb[2, 1] - Rlb[1, 2], Rlb[0, 2] - Rlb[2, 0], Rlb[1, 0] - Rlb[0, 1]])
         axis_B_to_B = np.transpose(Rot_L_to_B) @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
-        omega_L_to_B = (angle_B_to_B * axis_B_to_B) / dt
+        omega_LB = (angle_B_to_B * axis_B_to_B) / dt
 
-    v_rel_B = v_rel + np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
+    v_rel_B = v_rel + np.cross(-omega_LB, Rot_L_to_B @ sat_pos)
     # v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel_B, u_los.T) # this is incomplete
-    v_los_s = np.dot(v_rel_B, u_los.T) + np.sum(np.cross(omega + omega_L_to_B, r) * u_los, axis=1)
+    v_los_s = np.dot(v_rel_B, u_los.T) + np.sum(np.cross(omega - omega_LB, r) * u_los, axis=1)
     v_los_v = u_los * v_los_s[:, np.newaxis]
 
     # Add noise to lidar scan results

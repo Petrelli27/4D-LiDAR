@@ -152,9 +152,9 @@ def add_noise_with_global_pointing_and_range_dependent_error(
 
 def add_noise_with_global_pointing_and_range_dependent_error_and_dropout(
     X, Y, Z, V,
-    range_sigma=0.02,         # baseline range sigma [m]
-    vel_sigma=0.03,           # baseline velocity sigma [m/s]
-    point_sigma_deg=0.002,    # 1-sigma pointing (deg)
+    range_sigma=0.,         # baseline range sigma [m]
+    vel_sigma=0.,           # baseline velocity sigma [m/s]
+    point_sigma_deg=0.,    # 1-sigma pointing (deg)
     angular_mode='gaussian',  # 'gaussian' or 'uniform'
     omega_xyz_deg=None,       # optional (rx, ry, rz) in deg; if given, use exactly
     dropout_alpha=None,       # Beta(alpha, beta) for frame-level dropout

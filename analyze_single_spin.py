@@ -645,7 +645,7 @@ def boresight_metric(Rot_L_to_B, evecs):
 
     return np.min(angles)
 
-def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_BL, omega_LD, p, threshold=0.1):
+def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_LB, omega_LD, p, threshold=0.1):
     """
     Estimate the center of mass from the geometric bounding box centroid.
 
@@ -667,7 +667,8 @@ def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_BL, omega_LD, p, thresho
     # Select points where LOS velocity is explained by translation alone
     v_LD = v_k
     u_los = PLs_i / np.linalg.norm(PLs_i, axis=1, keepdims=True)  # (N, 3)
-    centered_points = PLs_i - p                                                 # (N, 3) r - p
+    centered_points = PLs_i - p    
+    omega_BL = -omega_LB                                             # (N, 3) r - p
     v_com_apparent = v_LD + np.cross(omega_BL, p)                               # (3,)
     omega_BD_cross = np.cross(omega_BL + omega_LD, centered_points)             # (N, 3)
     v_total = v_com_apparent + omega_BD_cross                                   # (N, 3)
@@ -1438,6 +1439,11 @@ def run(pickle_file, configs, logger):
             # length = orange to cyan, blue to cyan
             # height = orange to magenta, blue to magenta
             ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+            u_los = PLs[i] / np.linalg.norm(PLs[i], axis=1, keepdims=True)  # (N, 3)
+            VBi = np.asarray(VBs[i])
+            omega_BL = -omega_L_to_B
+            V_i = VBi[:, np.newaxis] * u_los - (debris_vel[i] + np.cross(omega_BL, debris_pos[i]))
+            ax.quiver(X_i, Y_i, Z_i, V_i[:,0], V_i[:,1], V_i[:,2])
             # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
 
 
