@@ -818,7 +818,7 @@ def run(pickle_file, configs, logger):
         Le = np.nan
         We = np.nan
         De = np.nan
-        visualize_flag = False
+        visualize_flag = True
         # visualize_flag = True
         print(f"Iteration {i}")
         # Use first measurements for initializations of states - not implemented currently, just chose initial states up top

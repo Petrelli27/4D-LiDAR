@@ -1,0 +1,75 @@
+simulation:
+  num_tests: 1
+  dt: 0.05
+  nframes: 250
+  seed: null
+
+initial_conditions:
+  position_km:
+    min: [-0.05, -0.05, -0.05]
+    max: [0.05, 0.05, 0.05]
+  velocity_km_s:
+    min: [-0.001, -0.001, -0.001]
+    max: [0.001, 0.001, 0.001]
+  angle0_deg:
+    min: 0.0
+    max: 360.0
+  omega_rad_s:
+    min: [-1.0, -1.0, -1.0]
+    max: [1.0, 1.0, 1.0]
+  altitude_km:
+    min: 670.0
+    max: 35786.0
+  valid_distance_m:
+    min: 5.0
+    max: 500.0
+
+mesh:
+  debris_file: object_stls/rectangle-one-panel-with-dish.stl
+
+lidar:
+  res_box_m: 7.0
+  angular_resolution_deg: 0.025
+  max_horizontal_fov_deg: 120.0
+  max_vertical_fov_deg: 30.0
+  max_horizontal_rays: 200
+  max_vertical_rays: 200
+  sensor_origin_B_m: [0.0, 0.0, 0.0]
+
+dynamics:
+  model: nonlinear_two_body   # options: nonlinear_two_body, cw
+  mu_km3_s2: 398600.5
+  orbit:
+    derive_radius_from_mean_motion: true
+    radius_km: null
+  integrator:
+    method: RK45
+    rtol: 1.0e-10
+    atol: 1.0e-12
+
+noise:
+  model: global_pointing_range_dependent_dropout
+  range_sigma_m: 0.00
+  vel_sigma_m_s: 0.0
+  point_sigma_deg: 0.00
+  angular_mode: gaussian
+  range_dependent:
+    enabled: true
+    reference_range_m: 10.0
+    slope_m_per_m: 0.00
+  pointing:
+    omega_xyz_deg: null
+  point_dropout:
+    enabled: false
+    alpha: 1.0
+    beta: 20.0
+
+frame_dropout:
+  enabled: false
+  alpha: 2.0
+  beta: 20.0
+
+output:
+  results_dir: results
+  sim_filename_template: sim_debris_trimesh_test_{sim_index}.pickle
+  initial_conditions_csv: initial_conditions.csv
