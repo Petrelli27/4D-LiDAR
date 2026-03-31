@@ -668,7 +668,6 @@ def run(pickle_file, configs, logger):
     YLs = []
     ZLs = []
     PLs = []  # store x, y, z point cloud in L
-    VLs = VBs  # store velocity point cloud
     x_s = []  # store states over time
     z_s = []  # store measurements over time
     P_s = []  # store covariances in time

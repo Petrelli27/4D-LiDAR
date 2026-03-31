@@ -236,33 +236,39 @@ def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_
         for idx, name in enumerate(names):
             record[f"{prefix}_{name}"] = float(values[idx]) if idx < len(values) else np.nan
 
+    def add_quat(prefix, quat):
+        if quat is None:
+            add_vec(prefix, None, ["w", "x", "y", "z"])
+        else:
+            add_vec(prefix, normalize_quat(np.asarray(quat).copy()), ["w", "x", "y", "z"])
+
     # state estimate: [p, v, omega, p1, q]
     add_vec("state_est", x_k[0:3], ["x", "y", "z"])
     add_vec("state_est", x_k[3:6], ["vx", "vy", "vz"])
     add_vec("state_est", x_k[6:9], ["wx", "wy", "wz"])
     add_vec("state_est_p1", x_k[9:12], ["x", "y", "z"])
-    q_est = normalize_quat(np.asarray(x_k[12:16]).copy())
-    add_vec("state_est_q", q_est, ["w", "x", "y", "z"])
+    add_quat("state_est_q", x_k[12:16])
 
     # main measurements
     add_vec("meas_p", z_p_k, ["x", "y", "z"])
     add_vec("meas_w", z_omega_k, ["x", "y", "z"])
     add_vec("meas_p1", z_p1_k, ["x", "y", "z"])
-    add_vec("meas_q", normalize_quat(np.asarray(z_q_k).copy()), ["w", "x", "y", "z"])
+    add_quat("meas_q", z_q_k)
 
     raw_p = without_correction[i] if i < len(without_correction) else [np.nan, np.nan, np.nan]
     add_vec("meas_p_raw", raw_p, ["x", "y", "z"])
 
     # PCA-specific measurements
     add_vec("meas_pca_p", z_p_k_1, ["x", "y", "z"])
-    add_vec("meas_pca_p1", associatedBbox_1[:, 0], ["x", "y", "z"])
-    add_vec("meas_pca_q", normalize_quat(np.asarray(z_q_k_1).copy()), ["w", "x", "y", "z"])
+    p1_pca = associatedBbox_1[:, 0] if associatedBbox_1 is not None else None
+    add_vec("meas_pca_p1", p1_pca, ["x", "y", "z"])
+    add_quat("meas_pca_q", z_q_k_1)
 
     # RANSAC-specific measurements
     add_vec("meas_ransac_p", z_p_k_2, ["x", "y", "z"])
     p1_ransac = associatedBbox_2[:, 0] if associatedBbox_2 is not None else None
     add_vec("meas_ransac_p1", p1_ransac, ["x", "y", "z"])
-    add_vec("meas_ransac_q", normalize_quat(np.asarray(z_q_k_2).copy()) if z_q_k_2 is not None else None, ["w", "x", "y", "z"])
+    add_quat("meas_ransac_q", z_q_k_2)
 
     # angular velocity diagnostics
     add_vec("omega_lls", omega_LLS, ["x", "y", "z"])
@@ -666,8 +672,9 @@ def run(pickle_file, configs, logger):
     omega_L = data['omega_L']
     dt = data['dt']
     initial_angle_rotation = data['angle_0']
-    frame_good = data['use_frame']
+    frame_good = np.asarray(data['use_frame'], dtype=bool)
     frame_good[0] = True  # always start on a non-fully-occluded frame
+    partial_occlusion = np.asarray(data.get('partial', np.zeros(len(frame_good), dtype=bool)), dtype=bool)
     RC_flag = False
 
     # Estimation Loop
@@ -821,7 +828,10 @@ def run(pickle_file, configs, logger):
                 break
     # q_ini = q_true[0,:]
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
+    prev_box_B = None
     for i in range(nframes):
+        current_frame_good = bool(frame_good[i])
+        current_partial = bool(partial_occlusion[i])
         Le = np.nan
         We = np.nan
         De = np.nan
@@ -927,220 +937,193 @@ def run(pickle_file, configs, logger):
         # Measurements
         #######################
 
+        curr_t = i * dt
+        t_start = configs['start_time']  # when the first bias calculation should be initiated
+        t_interval = configs['interval']  # how many seconds of data should be collected each time
+        bias_removal_success = False
         PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
-        # find bounding box from points
         XLs.append(PLs[i][:, 0])
         YLs.append(PLs[i][:, 1])
         ZLs.append(PLs[i][:, 2])
         X_i = XLs[i]
         Y_i = YLs[i]
         Z_i = ZLs[i]
-        
-        num_points = len(Z_i)
-        #logger.info(f"Number of points in point cloud for rank {rank}: {num_points}")
+        if current_frame_good:
 
-        # Return bounding box and centroid estimate of bounding box
-        z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
-        evecs = R_1.copy()
-        if i == 0:
-            q_kp1 = rotm2quat(R_1)
-        z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
-        if R_1_2.size == 0:
-            ransac_error = True
-        else:
-            ransac_error = False
+            num_points = len(Z_i)
 
-        ransac_vecs_volume = 0.0
-        if not ransac_error and normal_vecs.shape[0] >= 3:
-            n0 = normal_vecs[0] / np.linalg.norm(normal_vecs[0])
-            n1 = normal_vecs[1] / np.linalg.norm(normal_vecs[1])
-            n2 = normal_vecs[2] / np.linalg.norm(normal_vecs[2])
-            ransac_vecs_volume = abs(np.linalg.det(np.array([n0, n1, n2])))
-        ransac_orthos.append(ransac_vecs_volume)
+            z_pi_k_1, z_p_k_1, R_1, evals = boundingbox.bbox3d(X_i, Y_i, Z_i, True)  # unassociated bbox
+            evecs = R_1.copy()
+            if i == 0:
+                q_kp1 = rotm2quat(R_1)
+            z_pi_k_2, z_p_k_2, R_1_2, normal_vecs, ranking, num_planes = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, False)
 
-        ############
-        # bias removal
-        ############
-
-        original_pos_meas.append(z_p_k_1)
-        centroids_inB.append(Rot_L_to_B[i] @ z_p_k_1)
-        true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
-
-        curr_t = i * dt
-        t_start = configs['start_time']  # when the first bias calculation should be initiated
-        t_interval = configs['interval']  # how many seconds of data should be collected each time
-
-        # grab data every interval
-        if curr_t >= (t_start + t_interval):
-            if (curr_t + t_start) % t_interval == 0 and done == 0:  # grab new data
-                interval_time = curr_t - t_interval
-                z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
-                z = np.array(z_in_b)
-                z = z[int(interval_time / dt):, :]
-                estimated_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(estimated_pos)])
-                estimated = np.array(estimated_inB)
-                estimated = estimated[int(interval_time / dt):, :]
-                true_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(debris_pos)])
-                true = np.array(true_inB)
-                true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
-
-                thresh = configs['threshold']  # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-                num_sin = configs['number_of_sinusoids']  # number of sinusoids to use to fit the data
-                skip = configs['number_of_skips']  # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
-                params_z, constant_z, bias_removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
-                parameters = [params_x, params_y, params_z]
-
-                constants = [0, 0, constant_z]
-                done = 1
-
-        #####################
-
-        # Orientation association
-        # R_1 is obtained from bounding box
-        if i == 0:
-            z_q_k_1 = rotm2quat(R_1)
-            if not ransac_error:
-                z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
-            # z_q_k_1 = rotm2quat(R_1 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-            #                                                                   1.]]))  # this rotation is to set initial orientation to match with true
-            # if not ransac_error:
-            #     z_q_k_2 = rotm2quat(R_1_2 @ np.array([[0., 1., 0.], [-1., 0., 0.], [0., 0.,
-            #                                                                     1.]]))  # this rotation is to set initial orientation to match with true
-            z_q_k = z_q_k_1.copy()
-            z_pi_k = z_pi_k_1.copy()
-            z_p_k = z_p_k_1.copy()
-            perfect_metric = False
-        else:
-            z_q_k_1, _, error = rotation_association(q_kp1, R_1)
-            if not ransac_error:
-                z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
-            if quat_angle_diff(z_q_k_1, q_true[i, :]) > np.deg2rad(35):
-                perfect_metric = True
+            if R_1_2.size == 0:
+                ransac_error = True
             else:
-                perfect_metric = False
+                ransac_error = False
 
-        if i > 0:
-            LWD = 2 * quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
-            L = LWD[0];
-            W = LWD[1];
-            D = LWD[2]
-            predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)  # just use the predicted box instead
+            ransac_vecs_volume = 0.0
+            if not ransac_error and normal_vecs.shape[0] >= 3:
+                n0 = normal_vecs[0] / np.linalg.norm(normal_vecs[0])
+                n1 = normal_vecs[1] / np.linalg.norm(normal_vecs[1])
+                n2 = normal_vecs[2] / np.linalg.norm(normal_vecs[2])
+                ransac_vecs_volume = abs(np.linalg.det(np.array([n0, n1, n2])))
+            ransac_orthos.append(ransac_vecs_volume)
 
-            # first use q from R_1 to get L,W,D
-            # then use z_q_k (not perfectly aligned) to get
-        associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1,
-                                                              R_1)  # L: along x-axis, W: along y-axis D: along z-axis
-        z_p1_k_1 = associatedBbox_1[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
-        if not ransac_error:
-            associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
-            z_p1_k_2 = associatedBbox_2[:, 0]  # represents negative x,y,z corner (i.e. bottom, left, back in axis aligned box)
+            original_pos_meas.append(z_p_k_1)
+            centroids_inB.append(Rot_L_to_B[i] @ z_p_k_1)
+            true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
 
-        if i == 0:
-            associatedBbox = associatedBbox_1.copy()
-            z_p1_k = associatedBbox_1[:, 0]
-            z_q_k_1_previous = z_q_k_1.copy()
-            if not ransac_error:
-                z_q_k_2_previous = z_q_k_2.copy()
+            if curr_t >= (t_start + t_interval):
+                if (curr_t + t_start) % t_interval == 0 and done == 0:
+                    interval_time = curr_t - t_interval
+                    z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
+                    z = np.array(z_in_b)
+                    z = z[int(interval_time / dt):, :]
+                    estimated_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(estimated_pos)])
+                    estimated = np.array(estimated_inB)
+                    estimated = estimated[int(interval_time / dt):, :]
+                    true_inB = np.array([Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(debris_pos)])
+                    true = np.array(true_inB)
+                    true = true[int(interval_time / dt):int((interval_time + t_interval) / dt) + 1, :]
 
-        # Default metric inputs so the selector functions can be called safely on
-        # the first frame and during startup before all comparisons are available.
-        ransac_pred_diff = np.nan
-        pca_pred_diff = np.nan
-        ransac_pca_diff = np.nan
-        ransac_prev_diff = np.nan
-        pca_prev_diff = np.nan
-        ransac_true_diff = np.nan
-        pca_true_diff = np.nan
-        pred_true_diff = np.nan
-        pca_ratio = 0.0
-        pca_angle = 0.0
+                    thresh = configs['threshold']
+                    num_sin = configs['number_of_sinusoids']
+                    skip = configs['number_of_skips']
+                    params_z, constant_z, bias_removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+                    parameters = [params_x, params_y, params_z]
+                    constants = [0, 0, constant_z]
+                    done = 1
 
-        if i > 0:
-            ###########################################################################3
-            if not ransac_error:
-                ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
-                ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
-                ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
-                ransac_true_diff = np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))
+            if i == 0:
+                z_q_k_1 = rotm2quat(R_1)
+                if not ransac_error:
+                    z_q_k_2, _, _ = rotation_association(z_q_k_1, R_1_2)
+                z_q_k = z_q_k_1.copy()
+                z_pi_k = z_pi_k_1.copy()
+                z_p_k = z_p_k_1.copy()
             else:
-                nonsense_value = 1000
-                ransac_pred_diff = nonsense_value
-                ransac_pca_diff = nonsense_value
-                ransac_prev_diff = nonsense_value
-                ransac_true_diff = nonsense_value
+                z_q_k_1, _, error = rotation_association(q_kp1, R_1)
+                if not ransac_error:
+                    z_q_k_2, bad_attitude_measurement_flag_2, error_2 = rotation_association(q_kp1, R_1_2)
 
+            if i > 0:
+                LWD = 2 * quat2rotm(q_kp1).T @ (p_kp1 - p1_kp1)
+                L = LWD[0]
+                W = LWD[1]
+                D = LWD[2]
+                predictedBbox = boundingbox.from_params(p_kp1, q_kp1, L, W, D)
 
-            pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
-            pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
-            pca_true_diff = np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))
-            pred_true_diff = np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))
-            # pred_prev_diff = np.rad2deg(quat_angle_diff(q_kp1, q_km1))
-            short_metric_thresh = configs['short_metric_thresh']
-            orthonormal_thresh = configs['orthonormal_thresh']
+            associatedBbox_1, Lm, Wm, Dm = boundingbox.associated(z_q_k_1, z_pi_k_1, z_p_k_1, R_1)
+            z_p1_k_1 = associatedBbox_1[:, 0]
+            if not ransac_error:
+                associatedBbox_2, Lm_2, Wm_2, Dm_2 = boundingbox.associated(z_q_k_2, z_pi_k_2, z_p_k_2, R_1_2)
+                z_p1_k_2 = associatedBbox_2[:, 0]
+            else:
+                associatedBbox_2 = None
+                z_p1_k_2 = None
+                Lm_2 = Wm_2 = Dm_2 = np.nan
 
-            if i > configs['start']:
-                pca_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
-                ran_prev_thresh = configs['previous_threshold_multiplier'] * dt * np.rad2deg(np.linalg.norm(omega_kp1))
+            if i == 0:
+                associatedBbox = associatedBbox_1.copy()
+                z_p1_k = associatedBbox_1[:, 0]
+                z_q_k_1_previous = z_q_k_1.copy()
+                if not ransac_error:
+                    z_q_k_2_previous = z_q_k_2.copy()
 
-            # pca metric
-            pca_ratio = eigenvalue_metric(evals)
-            pca_ratios.append(pca_ratio)
-            pca_angle = np.rad2deg(boresight_metric(Rot_L_to_B[i], evecs))
-            pca_angles.append(pca_angle)
-        if i == 0:
-            pca_ratios.append(0.0)
-            pca_angles.append(0.0)
+            ransac_pred_diff = np.nan
+            pca_pred_diff = np.nan
+            ransac_pca_diff = np.nan
+            ransac_prev_diff = np.nan
+            pca_prev_diff = np.nan
+            ransac_true_diff = np.nan
+            pca_true_diff = np.nan
+            pred_true_diff = np.nan
+            pca_ratio = 0.0
+            pca_angle = 0.0
 
-        metric_result = select_measurement_method(
-            i=i,
-            start_index=configs['start'],
-            ransac_pred_diff=ransac_pred_diff,
-            pca_pred_diff=pca_pred_diff,
-            ransac_pca_diff=ransac_pca_diff,
-            ransac_vecs_volume=ransac_vecs_volume,
-            pca_ratio=pca_ratios[-1] if len(pca_ratios) > 0 else 0.0,
-            pca_angle=pca_angles[-1] if len(pca_angles) > 0 else 0.0,
-            short_metric_thresh=configs['short_metric_thresh'],
-            orthonormal_thresh=configs['orthonormal_thresh'],
-            eig_thresh=configs['eig_thresh'],
-            boresight_thresh=configs['boresight_thresh'],
-        )
-        use_measurement = metric_result['choice_code']
-        short_metric_choice = metric_result['short_metric_choice']
-        short_metric_choices.append(short_metric_choice)
+            if i > 0:
+                if not ransac_error:
+                    ransac_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_2))
+                    ransac_pca_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))
+                    ransac_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_2_previous))
+                    ransac_true_diff = np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))
+                else:
+                    nonsense_value = 1000
+                    ransac_pred_diff = nonsense_value
+                    ransac_pca_diff = nonsense_value
+                    ransac_prev_diff = nonsense_value
+                    ransac_true_diff = nonsense_value
 
-        oracle_result = select_oracle_method(
-            i=i,
-            ransac_true_diff=ransac_true_diff,
-            pca_true_diff=pca_true_diff,
-            pred_true_diff=pred_true_diff,
-            true_orientation_difference=configs['true_orientation_difference'],
-        )
-        ideal_measurement = oracle_result['choice_code']
-        perfect_metric_choice = oracle_result['perfect_metric_choice']
-        perfect_metric_choices.append(perfect_metric_choice)
+                pca_pred_diff = np.rad2deg(quat_angle_diff(q_kp1, z_q_k_1))
+                pca_prev_diff = np.rad2deg(quat_angle_diff(z_q_k_1, z_q_k_1_previous))
+                pca_true_diff = np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))
+                pred_true_diff = np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))
+                pca_ratio = eigenvalue_metric(evals)
+                pca_ratios.append(pca_ratio)
+                pca_angle = np.rad2deg(boresight_metric(Rot_L_to_B[i], evecs))
+                pca_angles.append(pca_angle)
+            if i == 0:
+                pca_ratios.append(0.0)
+                pca_angles.append(0.0)
 
-        metric_matches_oracle = bool(metric_result['choice_code'] == oracle_result['choice_code'])
-        oracle_override_enabled = bool(configs['use_perfect_metric'])
-        metric_overridden_by_oracle = bool(oracle_override_enabled and not metric_matches_oracle)
+            metric_result = select_measurement_method(
+                i=i,
+                start_index=configs['start'],
+                ransac_pred_diff=ransac_pred_diff,
+                pca_pred_diff=pca_pred_diff,
+                ransac_pca_diff=ransac_pca_diff,
+                ransac_vecs_volume=ransac_vecs_volume,
+                pca_ratio=pca_ratios[-1] if len(pca_ratios) > 0 else 0.0,
+                pca_angle=pca_angles[-1] if len(pca_angles) > 0 else 0.0,
+                short_metric_thresh=configs['short_metric_thresh'],
+                orthonormal_thresh=configs['orthonormal_thresh'],
+                eig_thresh=configs['eig_thresh'],
+                boresight_thresh=configs['boresight_thresh'],
+            )
+            use_measurement = metric_result['choice_code']
+            short_metric_choice = metric_result['short_metric_choice']
+            short_metric_choices.append(short_metric_choice)
 
-        final_choice_code = oracle_result['choice_code'] if oracle_override_enabled else metric_result['choice_code']
-        final_choice_name = METHOD_CODE_TO_NAME[final_choice_code]
-        if configs['use_perfect_metric']:
-            use_measurement = ideal_measurement
-        if use_measurement == 2:
-            try:
-                # use ransac
-                z_q_k = z_q_k_2.copy()
-                z_pi_k = z_pi_k_2.copy()
-                z_p_k = z_p_k_2.copy()
-                z_p1_k = associatedBbox_2[:, 0]
-                associatedBbox = associatedBbox_2.copy()
-                adapt = False
-                choice = 'ransac'
-            except UnboundLocalError:
-                # use pca
+            oracle_result = select_oracle_method(
+                i=i,
+                ransac_true_diff=ransac_true_diff,
+                pca_true_diff=pca_true_diff,
+                pred_true_diff=pred_true_diff,
+                true_orientation_difference=configs['true_orientation_difference'],
+            )
+            ideal_measurement = oracle_result['choice_code']
+            perfect_metric_choice = oracle_result['perfect_metric_choice']
+            perfect_metric_choices.append(perfect_metric_choice)
+
+            metric_matches_oracle = bool(metric_result['choice_code'] == oracle_result['choice_code'])
+            oracle_override_enabled = bool(configs['use_perfect_metric'])
+            metric_overridden_by_oracle = bool(oracle_override_enabled and not metric_matches_oracle)
+
+            final_choice_code = oracle_result['choice_code'] if oracle_override_enabled else metric_result['choice_code']
+            final_choice_name = METHOD_CODE_TO_NAME[final_choice_code]
+            if configs['use_perfect_metric']:
+                use_measurement = ideal_measurement
+            if use_measurement == 2:
+                try:
+                    z_q_k = z_q_k_2.copy()
+                    z_pi_k = z_pi_k_2.copy()
+                    z_p_k = z_p_k_2.copy()
+                    z_p1_k = associatedBbox_2[:, 0]
+                    associatedBbox = associatedBbox_2.copy()
+                    adapt = False
+                    choice = 'ransac'
+                except (UnboundLocalError, AttributeError):
+                    z_q_k = z_q_k_1.copy()
+                    z_pi_k = z_pi_k_1.copy()
+                    z_p_k = z_p_k_1.copy()
+                    z_p1_k = associatedBbox_1[:, 0]
+                    associatedBbox = associatedBbox_1.copy()
+                    adapt = False
+                    choice = 'pca'
+            elif use_measurement == 1:
                 z_q_k = z_q_k_1.copy()
                 z_pi_k = z_pi_k_1.copy()
                 z_p_k = z_p_k_1.copy()
@@ -1148,223 +1131,249 @@ def run(pickle_file, configs, logger):
                 associatedBbox = associatedBbox_1.copy()
                 adapt = False
                 choice = 'pca'
-        elif use_measurement == 1:
-            # use pca
-            z_q_k = z_q_k_1.copy()
-            z_pi_k = z_pi_k_1.copy()
-            z_p_k = z_p_k_1.copy()
-            z_p1_k = associatedBbox_1[:, 0]
-            associatedBbox = associatedBbox_1.copy()
-            adapt = False
-            choice = 'pca'
-        else:
-            # use prediction
-            associatedBbox = predictedBbox.copy()
-            z_p_k = z_p_k_1.copy()
-            z_p1_k = associatedBbox[:, 0]
-            adapt = True
-            choice = 'prediction'
-
-                ######################################
-
-        without_correction.append(z_p_k)
-        bbox1_dimensions.append([Lm, Wm, Dm])
-        if not ransac_error:
-            bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
-        else:
-            bbox2_dimensions.append([0, 0, 0])
-        if curr_t >= (t_start + t_interval) and bias_removal_success:
-            z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
-            z_p_k = z_p_k_z
-
-        # 2. Rotation of B Frame
-        omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
-        B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
-
-        omega_LLS = np.zeros(3)
-        omega_los_L = np.zeros(3)
-
-        # find angular velocity from LOS velocities
-        if i > 0:
-            # 1. Linear Least Squares
-            omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i], B_v_BL)
-            omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
-
-
-
-        # 3. Kabsch
-        ################ to use Kabsch you need i > 0, to wait for state initializations?
-        if i == 0:
-            prev_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
-            prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
-        else:
-            cur_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
-            cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
-            # rotate previous box with everything else
-            # prev_box_B = (rodrigues((omega_LLS + omega_L_to_B), dt) @ prev_box_B.T).T
-            omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
-            prev_box_B = cur_box_B.copy()  # for next iteration
-
-            # using moving average to smooth out omega_los_B
-            omega_kabsch_b_box[i % n_moving_average] = omega_los_B
-            if i < n_moving_average:
-                omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i + 1], axis=0)
             else:
-                omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
-            omega_los_L = Rot_B_to_L[i] @ omega_los_B_averaged
+                associatedBbox = predictedBbox.copy()
+                z_p_k = z_p_k_1.copy()
+                z_p1_k = associatedBbox[:, 0]
+                adapt = True
+                choice = 'prediction'
 
-        # Combine angular velocity estimates
-        if i == 0:
-            z_omega_k = omega_0
-        elif i <= settling_time:
-            z_omega_k = omega_LLS + omega_L_to_B  # ignores kabsch
-        else:
-            z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
+            without_correction.append(z_p_k)
+            bbox1_dimensions.append([Lm, Wm, Dm])
+            bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
+            if curr_t >= (t_start + t_interval) and bias_removal_success:
+                z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
+                z_p_k = z_p_k_z
 
-        #################################
+            omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
+            B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
 
-        ##############
-        # Update - Combine Measurement and Estimates
-        ##############
+            omega_LLS = np.zeros(3)
+            omega_los_L = np.zeros(3)
 
-        # Compute Measurement Vector
-        # if False:
-        if adapt:
-            z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
-            H = H2
-            R = R2
-        else:
-            z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
-            H = H1
-            R = R1
+            if i > 0:
+                omega_LLS_B = estimate_LLS(XBs[i], YBs[i], ZBs[i], Rot_L_to_B[i] @ z_p_k, Rot_L_to_B[i] @ v_k, VBs[i], B_v_BL)
+                omega_LLS = Rot_B_to_L[i] @ omega_LLS_B
 
-        # Set initial states to measurements
-        if i == 0:
-            x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])  # state
-            P_k = P_0.copy()  # covariance matrix
-            Le, We, De = get_dimensions(x_k[9:12], x_k[0:3], x_k[12:16])
+            if i == 0 or prev_box_B is None:
+                prev_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
+                prev_box_B = (Rot_L_to_B[i] @ prev_box_L.T).T
+            else:
+                cur_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
+                cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
+                omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+                prev_box_B = cur_box_B.copy()
 
-        num_meas = len(z_kp1)
+                omega_kabsch_b_box[i % n_moving_average] = omega_los_B
+                if i < n_moving_average:
+                    omega_los_B_averaged = np.mean(omega_kabsch_b_box[0:i + 1], axis=0)
+                else:
+                    omega_los_B_averaged = np.mean(omega_kabsch_b_box, axis=0)
+                omega_los_L = Rot_B_to_L[i] @ omega_los_B_averaged
 
-        if i > 0:
-            #################
-            # iterated measurement update
-            #################
-            x_op = x_kp1.copy()
-            P_op = P_kp1.copy()
+            if i == 0:
+                z_omega_k = omega_0
+            elif i <= settling_time:
+                z_omega_k = omega_LLS + omega_L_to_B
+            else:
+                z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
 
-            current_difference = 1  # initialize to a high value so that it can enter the loop, this is the current difference between states of consecutive iterations
+            if adapt:
+                z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
+                H = H2
+                R = R2
+            else:
+                z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+                H = H1
+                R = R1
 
-            # iterate to desired threshold
-            while current_difference > tolerance:
-                ####################
-                # measurement update
-                ###################
+            if i == 0:
+                x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])
+                P_k = P_0.copy()
+                Le, We, De = get_dimensions(x_k[9:12], x_k[0:3], x_k[12:16])
 
-                # state vector as mean for sigmapoint transform
-                mu_sp_m = x_op.copy()
+            num_meas = len(z_kp1)
 
-                # stack covariance matrix with process noise
-                sigma_zz_m = P_op.copy()
+            if i > 0:
+                x_op = x_kp1.copy()
+                P_op = P_kp1.copy()
+                current_difference = 1
+                while current_difference > tolerance:
+                    mu_sp_m = x_op.copy()
+                    sigma_zz_m = P_op.copy()
+                    try:
+                        L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+                    except np.linalg.LinAlgError:
+                        np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
+                        L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
 
-                # cholesky, ensure positive definiteness
-                try:
-                    L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
-                except np.linalg.LinAlgError:
-                    np.fill_diagonal(sigma_zz_m, sigma_zz_m.diagonal() + epsilon)
-                    L_m = scipy.linalg.cholesky(sigma_zz_m, lower=True)
+                    sp_0_m = mu_sp_m
+                    sp_s_m = [sp_0_m]
+                    sqrt_term_m = np.sqrt(dimL + lambd)
+                    for idx in range(0, dimL):
+                        col_i_L_m = L_m[:, idx]
+                        sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
+                        sp_s_m.append(sp_i_m)
+                    for idx in range(0, dimL):
+                        col_i_L_m = L_m[:, idx]
+                        sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
+                        sp_s_m.append(sp_i_L_m)
 
-                # initial sigmapoint
-                sp_0_m = mu_sp_m
+                    y_kp1_s_m = []
+                    mu_y_kp1_m = np.zeros((num_meas,))
+                    for jdx, sp_m in enumerate(sp_s_m):
+                        y_kp1_m = H @ sp_m
+                        if jdx == 0:
+                            mu_y_kp1_m += w_0_m * y_kp1_m
+                        else:
+                            mu_y_kp1_m += w_j_m * y_kp1_m
+                        y_kp1_s_m.append(y_kp1_m)
 
-                # other sigmapoints
-                sp_s_m = [sp_0_m]
-                sqrt_term_m = np.sqrt(dimL + lambd)
-                for idx in range(0, dimL):
-                    col_i_L_m = L_m[:, idx]
-                    sp_i_m = mu_sp_m + sqrt_term_m * col_i_L_m
-                    sp_s_m.append(sp_i_m)
-                for idx in range(0, dimL):
-                    col_i_L_m = L_m[:, idx]
-                    sp_i_L_m = mu_sp_m - sqrt_term_m * col_i_L_m
-                    sp_s_m.append(sp_i_L_m)
+                    sigma_yy = np.zeros((num_meas, num_meas))
+                    sigma_xy = np.zeros((num_states, num_meas))
+                    for kdx, sp in enumerate(sp_s_m):
+                        diff_x_m = sp - x_kp1
+                        diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
+                        if kdx == 0:
+                            sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
+                            sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
+                        else:
+                            sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
+                            sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
 
-                # pass each point through measurement model
-                y_kp1_s_m = []
+                    sigma_yy += R
+                    K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
+                    res_kp1 = z_kp1 - mu_y_kp1_m
+                    x_op_prev = x_op.copy()
+                    x_op = x_op + K_kp1 @ res_kp1
+                    P_op = P_op - K_kp1 @ sigma_yy @ K_kp1.T
+                    current_difference = np.linalg.norm(x_op - x_op_prev)
 
-                mu_y_kp1_m = np.zeros((num_meas,))
-                for jdx, sp_m in enumerate(sp_s_m):
-                    y_kp1_m = H @ sp_m
-                    if jdx == 0:
-                        mu_y_kp1_m += w_0_m * y_kp1_m
-                    else:
-                        mu_y_kp1_m += w_j_m * y_kp1_m
-                    y_kp1_s_m.append(y_kp1_m)
+                P_k = P_op.copy()
+                x_op[12:] = normalize_quat(x_op[12:])
+                x_k = x_op.copy()
+                x_p_k = x_k[0:3]
+                x_p1_k = x_k[9:12]
+                x_q_k = x_k[12:16]
+                rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
+                Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
+                bbox3_dimensions.append([Le, We, De])
+                P_k = 0.5 * P_k + 0.5 * P_k.T
+                z_q_k_1_previous = z_q_k_1.copy()
+                if not ransac_error:
+                    z_q_k_2_previous = z_q_k_2.copy()
 
-                # various aposteriori covariances
-                sigma_yy = np.zeros((num_meas, num_meas))
-                sigma_xy = np.zeros((num_states, num_meas))
-                for kdx, sp in enumerate(sp_s_m):
-                    diff_x_m = sp - x_kp1
-                    diff_y_m = y_kp1_s_m[kdx] - mu_y_kp1_m
-                    if kdx == 0:
-                        sigma_yy += w_0_c * np.outer(diff_y_m, diff_y_m.T)
-                        sigma_xy += w_0_c * np.outer(diff_x_m, diff_y_m.T)
-                    else:
-                        sigma_yy += w_j_c * np.outer(diff_y_m, diff_y_m.T)
-                        sigma_xy += w_j_c * np.outer(diff_x_m, diff_y_m.T)
-
-                # Kalman gain
-                sigma_yy += R
-                K_kp1 = np.matmul(sigma_xy, np.linalg.inv(sigma_yy))
-
-                # Calculate Residual
-                res_kp1 = z_kp1 - mu_y_kp1_m
-
-                x_op_prev = x_op.copy()
-
-                # Update State
-                x_op = x_op + K_kp1 @ res_kp1
-
-                # Update Covariance
-                P_op = P_op - K_kp1 @ sigma_yy @ K_kp1.T
-
-                current_difference = np.linalg.norm(x_op - x_op_prev)
-
-            # Transfer states and covariance from kp1 to k
-            P_k = P_op.copy()
-            x_op[12:] = normalize_quat(x_op[12:])
-            x_k = x_op.copy()
-
-            x_p_k = x_k[0:3]
-            x_p1_k = x_k[9:12]
-            x_q_k = x_k[12:16]
-            rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
-            Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
-            bbox3_dimensions.append([Le, We, De])
-
-            # smooth out covariance off diagonals
-            P_k = 0.5 * P_k + 0.5 * P_k.T
-
-            z_q_k_1_previous = z_q_k_1.copy()
+            estimated_pos.append(x_k[:3])
+            z_s.append(z_kp1)
+            z_pcas.append(np.hstack([z_p_k_1, z_omega_k, associatedBbox_1[:, 0], z_q_k_1]))
             if not ransac_error:
-                z_q_k_2_previous = z_q_k_2.copy()
-
-        z_s.append(z_kp1)
-        z_pcas.append(np.hstack([z_p_k_1, z_omega_k, associatedBbox_1[:, 0], z_q_k_1]))
-        if not ransac_error:
-            z_rans.append(np.hstack([z_p_k_2, z_omega_k, associatedBbox_2[:, 0], z_q_k_2]))
+                z_rans.append(np.hstack([z_p_k_2, z_omega_k, associatedBbox_2[:, 0], z_q_k_2]))
+            else:
+                z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
         else:
-            z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
+            num_points = 0
+            ransac_error = True
+            prev_box_B = None
+            adapt = False
+            z_kp1 = None
+            z_pi_k_1 = None
+            z_pi_k_2 = None
+            z_p_k_1 = None
+            z_p_k_2 = None
+            z_q_k_1 = None
+            z_q_k_2 = None
+            z_q_k = None
+            z_p_k = None
+            z_p1_k = None
+            associatedBbox_1 = None
+            associatedBbox_2 = None
+            z_p1_k_1 = None
+            z_p1_k_2 = None
+            omega_L_to_B = np.array([np.nan, np.nan, np.nan])
+            omega_LLS = np.array([np.nan, np.nan, np.nan])
+            omega_los_L = np.array([np.nan, np.nan, np.nan])
+            z_omega_k = None
+            ransac_pred_diff = np.nan
+            pca_pred_diff = np.nan
+            ransac_pca_diff = np.nan
+            ransac_prev_diff = np.nan
+            pca_prev_diff = np.nan
+            ransac_true_diff = np.nan
+            pca_true_diff = np.nan
+            pred_true_diff = np.nan
+            short_metric_choice = 'occluded'
+            perfect_metric_choice = 'occluded'
+            metric_result = {
+                'metric_active': False,
+                'choice_code': METHOD_PREDICTION,
+                'choice_name': 'prediction',
+                'stage_code': -1,
+                'stage_name': 'occluded',
+                'short_metric_choice': 'occluded',
+                'agree_pca_ransac': False,
+                'agree_pca_pred': False,
+                'agree_ransac_pred': False,
+                'agree_all_three': False,
+                'agreement_code': -1,
+                'agreement_name': 'occluded',
+                'flag_ransac_ortho_pass': False,
+                'flag_pca_eig_pass': False,
+                'flag_pca_boresight_pass': False,
+            }
+            oracle_result = {
+                'choice_code': METHOD_PREDICTION,
+                'choice_name': 'prediction',
+                'status_code': -1,
+                'status_name': 'occluded',
+                'perfect_metric_choice': 'occluded',
+                'pass_pca': False,
+                'pass_ransac': False,
+                'pass_pred': False,
+                'pass_all_three': False,
+                'true_pass_pattern_code': -1,
+                'true_pass_pattern_name': 'occluded',
+            }
+            metric_matches_oracle = False
+            oracle_override_enabled = bool(configs['use_perfect_metric'])
+            metric_overridden_by_oracle = False
+            final_choice_code = METHOD_PREDICTION
+            final_choice_name = 'prediction'
+            ransac_orthos.append(np.nan)
+            pca_ratios.append(np.nan)
+            pca_angles.append(np.nan)
+            without_correction.append([np.nan, np.nan, np.nan])
+            bbox1_dimensions.append([np.nan, np.nan, np.nan])
+            bbox2_dimensions.append([np.nan, np.nan, np.nan])
 
+            if i == 0:
+                x_k = x_0.copy()
+                P_k = P_0.copy()
+                x_q_k = x_k[12:16]
+            else:
+                x_k = x_kp1.copy()
+                x_k[12:] = normalize_quat(x_k[12:])
+                P_k = 0.5 * P_kp1 + 0.5 * P_kp1.T
+                x_q_k = x_k[12:16]
+                rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
+                Le, We, De = get_dimensions(x_k[9:12], x_k[0:3], x_q_k)
+                bbox3_dimensions.append([Le, We, De])
+
+            z_s.append(np.full(13, np.nan))
+            z_pcas.append(np.full(13, np.nan))
+            z_rans.append(np.full(13, np.nan))
         # Append for analysis
         P_s.append(P_k)
         x_s.append(x_k)
-        estimated_pos.append(x_k[:3])
+
 
         # Append data for output file
         record = {
             'file_name': pickle_file,
+            'frame': i,
+            'frame_good': current_frame_good,
+            'partial_occlusion': current_partial,
+            'update_performed': bool(current_frame_good),
+            'prediction_only': not current_frame_good,
             'ransac_error': 0 if i == 0 else ransac_true_diff,
             'pca_error': 0 if i == 0 else pca_true_diff,
             'prediction_error': 0 if i == 0 else pred_true_diff,
@@ -1421,9 +1430,11 @@ def run(pickle_file, configs, logger):
         record = add_truth_columns(record, i, debris_pos, debris_vel, omega_true, q_true)
         record = add_covariance_and_geometry_columns(record, P_k, debris_pos[i] if i < len(debris_pos) else None, Le, We, De)
         frame_records.append(record)
-        assignment_records.append({
-            'frame': i,
-            'file_name': pickle_file,
+        if current_frame_good:
+            assignment_records.append({
+                'frame': i,
+                'file_name': pickle_file,
+                'partial_occlusion': current_partial,
             'metric_active': metric_result['metric_active'],
             'metric_choice_code': metric_result['choice_code'],
             'metric_choice_name': metric_result['choice_name'],
@@ -1449,9 +1460,9 @@ def run(pickle_file, configs, logger):
             'oracle_override_enabled': oracle_override_enabled,
             'metric_overridden_by_oracle': metric_overridden_by_oracle,
             'final_choice_code': final_choice_code,
-            'final_choice_name': final_choice_name,
-        })
-        if (not RC_flag) and i > configs['start'] and metric_result['agree_pca_ransac']:
+                'final_choice_name': final_choice_name,
+            })
+        if current_frame_good and (not RC_flag) and i > configs['start'] and metric_result['agree_pca_ransac']:
             RC_flag = True
             q_true = recalibrate_true_orientation(q_true, z_q_k, i)
             q_true = smoothen_q(q_true)

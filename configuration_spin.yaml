@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-pickle_directory_name: 'results_kompsat_200s_test'           # the directory where all the pickle files are stored
+pickle_directory_name: 'results'           # the directory where all the pickle files are stored
 
                                                 # the various columns in the final csv to be saved, description:
                                                 # true_xxx: number of times xxx should have been chosen
@@ -40,6 +40,7 @@ master_file_columns: [
     "state_est_wx", "state_est_wy", "state_est_wz",
     "state_est_p1_x", "state_est_p1_y", "state_est_p1_z",
     "state_est_qw", "state_est_qx", "state_est_qy", "state_est_qz",
+    "state_est_pg_x", "state_est_pg_y", "state_est_pg_z",
 
     # --- covariance (diag P_k) ---
     "cov_x", "cov_y", "cov_z",
@@ -47,6 +48,7 @@ master_file_columns: [
     "cov_wx", "cov_wy", "cov_wz",
     "cov_p1_x", "cov_p1_y", "cov_p1_z",
     "cov_qw", "cov_qx", "cov_qy", "cov_qz",
+    "cov_pg_x", "cov_pg_y", "cov_pg_z",
 
     # --- fused measurements ---
     "meas_p_x", "meas_p_y", "meas_p_z",
@@ -54,16 +56,19 @@ master_file_columns: [
     "meas_wx", "meas_wy", "meas_wz",
     "meas_p1_x", "meas_p1_y", "meas_p1_z",
     "meas_qw", "meas_qx", "meas_qy", "meas_qz",
+    "meas_pg_x", "meas_pg_y", "meas_pg_z",
 
     # --- PCA measurements ---
     "meas_pca_p_x", "meas_pca_p_y", "meas_pca_p_z",
     "meas_pca_p1_x", "meas_pca_p1_y", "meas_pca_p1_z",
     "meas_pca_qw", "meas_pca_qx", "meas_pca_qy", "meas_pca_qz",
+    "meas_pca_pg_x", "meas_pca_pg_y", "meas_pca_pg_z",
 
     # --- RANSAC measurements ---
     "meas_ransac_p_x", "meas_ransac_p_y", "meas_ransac_p_z",
     "meas_ransac_p1_x", "meas_ransac_p1_y", "meas_ransac_p1_z",
     "meas_ransac_qw", "meas_ransac_qx", "meas_ransac_qy", "meas_ransac_qz",
+    "meas_ransac_pg_x", "meas_ransac_pg_y", "meas_ransac_pg_z",
 
     # --- angular velocity diagnostics ---
     "omega_lls_x", "omega_lls_y", "omega_lls_z",
@@ -79,9 +84,9 @@ master_file_columns: [
     # --- range ---
     "true_range",
 ]
-top_level_dir: 'C:\Users\seanw\Desktop\4D-LiDAR-parallel_cluster-2'                       # the folder where csv will be saved and where code is
-results_file_name: 'mc_res_kompsat_200s_test.csv'    # name of file containing all results
-assignment_results_file_name: 'ass_res_kompsat_200s_test'      # for the assigment exercise in analyze_parallel.py
+top_level_dir: ''                       # the folder where csv will be saved and where code is
+results_file_name: 'monte_carlo_results_comptest.csv'    # name of file containing all results
+assignment_results_file_name: 'assignment_results_comptest'      # for the assigment exercise in analyze_parallel.py
 options: ''                                     # specifying 'p' will enable printing of some messages to console
 
 
@@ -92,11 +97,11 @@ ini_vel_guess: [0.1, 0.1, 0.1]                 # initial velocity state of KF in
 ini_ang_vel_guess: [0.1, 0.1, 0.1]             # initial angular velocity state of KF in rad/s
 ini_orientation: [1., 0., 0., 0.]              # initial orientation of debris - assigned, quaternion
                                                # initial covariance matrix of KF
-ini_covariance_guess: [0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25]
+ini_covariance_guess: [0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.25, 0.5, 0.25]
                                                # initial process noise associated with various states: [qp, qv, qom, qp1, qq]
-ini_process_noise_cov: [0.00000001, 0.00000005, 0.00000005, 0.05, 0.000005]
+ini_process_noise_cov: [0.00000001, 0.00000005, 0.00000005, 0.05, 0.000005, 0.00000001]
                                                # initial measurement noise associated with various states: [p, om, p1, q]
-ini_meas_noise_cov: [0.005, 0.5, 1., 0.004]
+ini_meas_noise_cov: [0.005, 0.5, 1., 0.004, 0.005]
 
 # KF weight values for ISPKF portion
 alpha: 0.1                                     # alpha beta kappa together determine spread of sigmapoints
@@ -133,7 +138,7 @@ pca_prediction_threshold: 20                   # maximal difference in degrees b
 ransac_pca_threshold: 15                       # maximal difference in degrees between ransac and pca orientations
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
 true_orientation_difference: 15               # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: True                      # for comparison
+use_perfect_metric: False                      # for comparison
 short_metric_thresh: 15                         # threshold angle in degrees for short metric
 orthonormal_thresh: 0.85                        # volume threshold for using RANSAC even when there is no concord (ranges from 0-1, 1 means perfectly orthonormal, 0 means terrible)
 eig_thresh: 0.02                                 # threshold for eigenvalue metric, range is [0, 0.25]
