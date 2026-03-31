@@ -2,7 +2,7 @@ import os
 import pickle
 from pathlib import Path
 from typing import Any, Dict, Optional
-
+import argparse
 import mpi4py.rc
 mpi4py.rc.threads = False
 from mpi4py import MPI
@@ -252,7 +252,12 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
 
 
 if __name__ == "__main__":
-    config_path = os.environ.get("LIDAR_SIM_CONFIG", str(DEFAULT_CONFIG_PATH))
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_path", nargs="?", default=None)
+    args = parser.parse_args()
+
+    config_path = (args.config_path or os.environ.get("LIDAR_SIM_CONFIG", str(DEFAULT_CONFIG_PATH)))
     cfg = load_config(config_path)
 
     seed = cfg["simulation"].get("seed")

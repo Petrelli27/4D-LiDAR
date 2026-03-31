@@ -1,16 +1,16 @@
 simulation:
-  num_tests: 1
+  num_tests: 4
   dt: 0.05
-  nframes: 250
+  nframes: 4000
   seed: null
 
 initial_conditions:
   position_km:
-    min: [-0.05, -0.05, -0.05]
-    max: [0.05, 0.05, 0.05]
+    min: [-0.35, -0.35, -0.35]
+    max: [0.35, 0.35, 0.35]
   velocity_km_s:
-    min: [-0.001, -0.001, -0.001]
-    max: [0.001, 0.001, 0.001]
+    min: [-0.0001, -0.0001, -0.0001]
+    max: [0.0001, 0.0001, 0.0001]
   angle0_deg:
     min: 0.0
     max: 360.0
@@ -22,18 +22,18 @@ initial_conditions:
     max: 35786.0
   valid_distance_m:
     min: 5.0
-    max: 500.0
+    max: 350.0
 
 mesh:
-  debris_file: object_stls/rectangle-one-panel-with-dish.stl
+  debris_file: object_stls/kompsat-1-v9.stl
 
 lidar:
   res_box_m: 7.0
   angular_resolution_deg: 0.025
   max_horizontal_fov_deg: 120.0
   max_vertical_fov_deg: 30.0
-  max_horizontal_rays: 200
-  max_vertical_rays: 200
+  max_horizontal_rays: 80
+  max_vertical_rays: 80
   sensor_origin_B_m: [0.0, 0.0, 0.0]
 
 dynamics:
@@ -49,27 +49,27 @@ dynamics:
 
 noise:
   model: global_pointing_range_dependent_dropout
-  range_sigma_m: 0.00
-  vel_sigma_m_s: 0.0
-  point_sigma_deg: 0.00
+  range_sigma_m: 0.02
+  vel_sigma_m_s: 0.03
+  point_sigma_deg: 0.002
   angular_mode: gaussian
   range_dependent:
     enabled: true
     reference_range_m: 10.0
-    slope_m_per_m: 0.00
+    slope_m_per_m: 0.002
   pointing:
     omega_xyz_deg: null
   point_dropout:
-    enabled: false
-    alpha: 1.0
-    beta: 20.0
+    enabled: true
+    alpha: 10.0
+    beta: 90.0
 
 frame_dropout:
-  enabled: false
-  alpha: 2.0
-  beta: 20.0
+  enabled: true
+  alpha: 5.0
+  beta: 95.0
 
 output:
-  results_dir: results
-  sim_filename_template: sim_debris_trimesh_test_{sim_index}.pickle
-  initial_conditions_csv: initial_conditions.csv
+  results_dir: results_kompsat_200s_test
+  sim_filename_template: sim_debris_trimesh_test_kompsat_{sim_index}.pickle
+  initial_conditions_csv: initial_conditions_kompsat.csv
