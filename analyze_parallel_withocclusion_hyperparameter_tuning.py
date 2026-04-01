@@ -1,5 +1,6 @@
 import copy
 import os.path
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -643,7 +644,29 @@ def boresight_metric(Rot_L_to_B, evecs):
     
     return np.min(angles)
 
-def run(pickle_file, configs, logger):
+def _format_float_for_tag(value):
+    value = float(value)
+    if value.is_integer():
+        return str(int(value))
+    text = f"{value:.8f}".rstrip("0").rstrip(".")
+    return text.replace("-", "m").replace(".", "p")
+
+
+def build_combo_name(ransac_pca_threshold, orthonormal_thresh, eig_thresh):
+    return (
+        f"rpca_{_format_float_for_tag(ransac_pca_threshold)}"
+        f"__ortho_{_format_float_for_tag(orthonormal_thresh)}"
+        f"__eig_{_format_float_for_tag(eig_thresh)}"
+    )
+
+
+def build_output_stem(task, configs):
+    assignment_prefix = configs.get('assignment_results_file_name', 'ass_res_')
+    pickle_stem = Path(task['pickle_file']).stem
+    return f"{assignment_prefix}{task['geometry_name']}__{task['combo_name']}__run_{task['run_number_for_combo']:03d}__{pickle_stem}"
+
+
+def run(task, configs, logger):
 
     # Initialize MPI
     comm = MPI.COMM_WORLD
@@ -654,7 +677,11 @@ def run(pickle_file, configs, logger):
     O_B = np.array([0, 0, 0])
     O_L = np.array([0, 0, 0])
 
-    with open(os.path.join(configs['pickle_directory_name'], pickle_file), 'rb') as sim_data:
+    pickle_path = task['pickle_path']
+    pickle_file = task['pickle_file']
+    output_stem = build_output_stem(task, configs)
+
+    with open(pickle_path, 'rb') as sim_data:
         # with open('sim_kompsat_neg_om_longer.pickle', 'rb') as sim_data:
         # with open('sim_new_conditions.pickle', 'rb') as sim_data:
         data = pickle.load(sim_data)
@@ -1369,6 +1396,13 @@ def run(pickle_file, configs, logger):
         # Append data for output file
         record = {
             'file_name': pickle_file,
+            'geometry_name': task['geometry_name'],
+            'combo_name': task['combo_name'],
+            'combo_index': task['combo_index'],
+            'run_number_for_combo': task['run_number_for_combo'],
+            'ransac_pca_threshold': task['ransac_pca_threshold'],
+            'orthonormal_thresh': task['orthonormal_thresh'],
+            'eig_thresh': task['eig_thresh'],
             'frame': i,
             'frame_good': current_frame_good,
             'partial_occlusion': current_partial,
@@ -1434,6 +1468,13 @@ def run(pickle_file, configs, logger):
             assignment_records.append({
                 'frame': i,
                 'file_name': pickle_file,
+                'geometry_name': task['geometry_name'],
+                'combo_name': task['combo_name'],
+                'combo_index': task['combo_index'],
+                'run_number_for_combo': task['run_number_for_combo'],
+                'ransac_pca_threshold': task['ransac_pca_threshold'],
+                'orthonormal_thresh': task['orthonormal_thresh'],
+                'eig_thresh': task['eig_thresh'],
                 'partial_occlusion': current_partial,
             'metric_active': metric_result['metric_active'],
             'metric_choice_code': metric_result['choice_code'],
@@ -1476,14 +1517,15 @@ def run(pickle_file, configs, logger):
         master_file = master_file.reindex(columns=existing_columns + extra_columns)
 
     os.makedirs('full_results', exist_ok=True)
-    master_file.to_csv('full_results/results_of_' + pickle_file.split('.')[0] + '.csv', sep=',', header=True, index=False)
+    full_results_path = os.path.join('full_results', f'results_of_{output_stem}.csv')
+    master_file.to_csv(full_results_path, sep=',', header=True, index=False)
 
     ######
     # metric assignment experiment
     #####
     assignment_results = pd.DataFrame(assignment_records)
     os.makedirs('assignment_results', exist_ok=True)
-    assignment_path = 'assignment_results/' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv'
+    assignment_path = os.path.join('assignment_results', output_stem + '.csv')
     assignment_results.to_csv(assignment_path, sep=',', header=True, index=False)
 
     if not assignment_results.empty:
@@ -1505,8 +1547,21 @@ def run(pickle_file, configs, logger):
             'metric_stage_name', 'metric_choice_name', 'oracle_choice_name',
             'true_pass_pattern_name', 'agreement_name', 'final_choice_name', 'count'
         ])
+
+    for col, value in {
+        'geometry_name': task['geometry_name'],
+        'combo_name': task['combo_name'],
+        'combo_index': task['combo_index'],
+        'run_number_for_combo': task['run_number_for_combo'],
+        'ransac_pca_threshold': task['ransac_pca_threshold'],
+        'orthonormal_thresh': task['orthonormal_thresh'],
+        'eig_thresh': task['eig_thresh'],
+        'file_name': pickle_file,
+    }.items():
+        assignment_summary[col] = value
+
     assignment_summary.to_csv(
-        'assignment_results/summary_' + configs['assignment_results_file_name'] + pickle_file.split('.')[0] + '.csv',
+        os.path.join('assignment_results', 'summary_' + output_stem + '.csv'),
         sep=',', header=True, index=False
     )
 
@@ -1580,7 +1635,35 @@ def run(pickle_file, configs, logger):
         logger.info("Bias before ME: " + str([me_x_after, me_y_after, me_z_after]))
         logger.info("Orientation RMSE: " + str(rmse_q))
 
-    results = [rmse_px, rmse_py, rmse_pz, rmse_omx, rmse_omy, rmse_omz, rmse_vdx, rmse_vdy, rmse_vdz, rmse_x_before, rmse_y_before, rmse_z_before,
-               rmse_x_after, rmse_y_after, rmse_z_after, rmse_q]
+    results = {
+        'rmse_px': rmse_px,
+        'rmse_py': rmse_py,
+        'rmse_pz': rmse_pz,
+        'rmse_omx': rmse_omx,
+        'rmse_omy': rmse_omy,
+        'rmse_omz': rmse_omz,
+        'rmse_vdx': rmse_vdx,
+        'rmse_vdy': rmse_vdy,
+        'rmse_vdz': rmse_vdz,
+        'rmse_x_before': rmse_x_before,
+        'rmse_y_before': rmse_y_before,
+        'rmse_z_before': rmse_z_before,
+        'rmse_x_after': rmse_x_after,
+        'rmse_y_after': rmse_y_after,
+        'rmse_z_after': rmse_z_after,
+        'rmse_q': rmse_q,
+        'geometry_name': task['geometry_name'],
+        'pickle_file': pickle_file,
+        'pickle_path': pickle_path,
+        'combo_name': task['combo_name'],
+        'combo_index': task['combo_index'],
+        'run_number_for_combo': task['run_number_for_combo'],
+        'ransac_pca_threshold': task['ransac_pca_threshold'],
+        'orthonormal_thresh': task['orthonormal_thresh'],
+        'eig_thresh': task['eig_thresh'],
+        'full_results_file': full_results_path,
+        'assignment_results_file': assignment_path,
+        'assignment_summary_file': os.path.join('assignment_results', 'summary_' + output_stem + '.csv'),
+    }
 
     return results

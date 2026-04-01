@@ -52,9 +52,13 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
         axis_B_to_B = np.transpose(Rot_L_to_B) @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
         omega_LB = (angle_B_to_B * axis_B_to_B) / dt
 
-    v_rel_B = v_rel + np.cross(-omega_LB, Rot_L_to_B @ sat_pos)
+
+    rel_LB_component = np.cross(-omega_LB, Rot_L_to_B @ sat_pos)
+    v_rel_B = v_rel + rel_LB_component
     # v_los_s = np.sum(np.cross(omega, r) * u_los, axis=1) + np.dot(v_rel_B, u_los.T) # this is incomplete
-    v_los_s = np.dot(v_rel_B, u_los.T) + np.sum(np.cross(omega - omega_LB, r) * u_los, axis=1)
+    angular_component = np.sum(np.cross(omega - omega_LB, r) * u_los, axis=1)
+    linear_component = np.dot(v_rel_B, u_los.T)
+    v_los_s =  linear_component + angular_component
     v_los_v = u_los * v_los_s[:, np.newaxis]
 
     # Add noise to lidar scan results
@@ -69,11 +73,43 @@ def point_cloud(O_B, horizontal_resolution, vertical_resolution, h_range, v_rang
                                                                                                      dropout_beta=20,
                                                                                                      do_dropout=False)
 
-    visualize = False
+
+    visualize = True
     if visualize == True:
         import matplotlib.pyplot as plt
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (needed for 3D)
         # --- Helper: set equal scale in 3D so spheres look like spheres ---
+
+        # --- Figure 3: XY map of total LOS velocity ---
+        fig3 = plt.figure(figsize=(7, 6))
+        ax3 = fig3.add_subplot(111)
+        sc3 = ax3.scatter(Xs, Ys, c=v_los_s, s=8)
+        ax3.set_xlabel('X [m]')
+        ax3.set_ylabel('Y [m]')
+        ax3.set_title('Point cloud XY colored by total LOS velocity')
+        ax3.set_aspect('equal', adjustable='box')
+        plt.colorbar(sc3, ax=ax3, label='v_los_s [m/s]')
+
+        # --- Figure 4: XY map of linear component ---
+        fig4 = plt.figure(figsize=(7, 6))
+        ax4 = fig4.add_subplot(111)
+        sc4 = ax4.scatter(Xs, Ys, c=linear_component, s=8)
+        ax4.set_xlabel('X [m]')
+        ax4.set_ylabel('Y [m]')
+        ax4.set_title('Point cloud XY colored by linear component')
+        ax4.set_aspect('equal', adjustable='box')
+        plt.colorbar(sc4, ax=ax4, label='linear component [m/s]')
+
+        # --- Figure 5: XY map of angular component ---
+        fig5 = plt.figure(figsize=(7, 6))
+        ax5 = fig5.add_subplot(111)
+        sc5 = ax5.scatter(Xs, Ys, c=angular_component, s=8)
+        ax5.set_xlabel('X [m]')
+        ax5.set_ylabel('Y [m]')
+        ax5.set_title('Point cloud XY colored by angular component')
+        ax5.set_aspect('equal', adjustable='box')
+        plt.colorbar(sc5, ax=ax5, label='angular component [m/s]')
+
         def set_axes_equal(ax):
             x_limits = ax.get_xlim3d()
             y_limits = ax.get_ylim3d()

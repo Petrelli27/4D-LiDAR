@@ -1,0 +1,155 @@
+###############################################
+# monte_carlo.py config
+##############################################
+
+geometry_root_directory: 'test_pickle_files'         # top-level directory containing one subdirectory per geometry
+runs_per_geometry: 1                                          # number of pickle runs randomly selected within each geometry directory
+selection_seed: 42                                            # fixed seed so the same runs are reused for every hyperparameter combo
+
+                                                # the various columns in the final csv to be saved, description:
+                                                # true_xxx: number of times xxx should have been chosen
+                                                # prediction, ransac, pca: number of times it was chosen
+                                                # pca#, pred#, ran#: number of times bin number # was chosen
+                                                # rmse_xxx: the resultant rmse of that compenent of that state
+                                                # xxx_before or xxx_after: the quantity xxx before or after bias estimation
+results_column_names: ['rmse_px', 'rmse_py', 'rmse_pz', 'rmse_omx', 'rmse_omy', 'rmse_omz', 'rmse_vdx', 'rmse_vdy', 'rmse_vdz', 'rmse_x_before', 'rmse_y_before', 'rmse_z_before', 'rmse_x_after', 'rmse_y_after', 'rmse_z_after', 'rmse_q']
+master_file_columns: [
+
+    # --- task identity ---
+    "geometry_name",
+    "combo_name",
+    "combo_index",
+    "run_number_for_combo",
+    "ransac_pca_threshold",
+    "orthonormal_thresh",
+    "eig_thresh",
+
+    # --- identity ---
+    "frame",
+    "number_of_points",
+
+    # --- decision logic ---
+    "short_metric_choice",
+    "perfect_metric_choice",
+
+    # --- consistency metrics ---
+    "pca_prev_diff",
+    "ransac_prev_diff",
+    "ransac_pca_diff",
+    "ransac_pred_diff",
+    "pca_pred_diff",
+
+    # --- geometry / conditioning ---
+    "Le", "We", "De",
+    "pca_ratio",
+    "pca_angle",
+    "ransac_orthogonality",
+
+    # --- state estimate (x_k) ---
+    "state_est_x", "state_est_y", "state_est_z",
+    "state_est_vx", "state_est_vy", "state_est_vz",
+    "state_est_wx", "state_est_wy", "state_est_wz",
+    "state_est_p1_x", "state_est_p1_y", "state_est_p1_z",
+    "state_est_qw", "state_est_qx", "state_est_qy", "state_est_qz",
+
+    # --- covariance (diag P_k) ---
+    "cov_x", "cov_y", "cov_z",
+    "cov_vx", "cov_vy", "cov_vz",
+    "cov_wx", "cov_wy", "cov_wz",
+    "cov_p1_x", "cov_p1_y", "cov_p1_z",
+    "cov_qw", "cov_qx", "cov_qy", "cov_qz",
+
+    # --- fused measurements ---
+    "meas_p_x", "meas_p_y", "meas_p_z",
+    "meas_p_raw_x", "meas_p_raw_y", "meas_p_raw_z",
+    "meas_wx", "meas_wy", "meas_wz",
+    "meas_p1_x", "meas_p1_y", "meas_p1_z",
+    "meas_qw", "meas_qx", "meas_qy", "meas_qz",
+
+    # --- PCA measurements ---
+    "meas_pca_p_x", "meas_pca_p_y", "meas_pca_p_z",
+    "meas_pca_p1_x", "meas_pca_p1_y", "meas_pca_p1_z",
+    "meas_pca_qw", "meas_pca_qx", "meas_pca_qy", "meas_pca_qz",
+
+    # --- RANSAC measurements ---
+    "meas_ransac_p_x", "meas_ransac_p_y", "meas_ransac_p_z",
+    "meas_ransac_p1_x", "meas_ransac_p1_y", "meas_ransac_p1_z",
+    "meas_ransac_qw", "meas_ransac_qx", "meas_ransac_qy", "meas_ransac_qz",
+
+    # --- angular velocity diagnostics ---
+    "omega_lls_x", "omega_lls_y", "omega_lls_z",
+    "omega_l_to_b_x", "omega_l_to_b_y", "omega_l_to_b_z",
+    "omega_kabsch_x", "omega_kabsch_y", "omega_kabsch_z",
+
+    # --- truth ---
+    "truth_p_x", "truth_p_y", "truth_p_z",
+    "truth_v_x", "truth_v_y", "truth_v_z",
+    "truth_w_x", "truth_w_y", "truth_w_z",
+    "truth_qw", "truth_qx", "truth_qy", "truth_qz",
+
+    # --- range ---
+    "true_range",
+]
+top_level_dir: 'C:\Users\seanw\Desktop\4D-LiDAR-parallel_cluster-2'                       # the folder where csv will be saved and where code is
+results_file_name: 'mc_res_combo.csv'    # name of file containing all results
+assignment_results_file_name: 'ass_res_'             # assignment output filenames will become ass_res_<geometry>__<combo>__run_<n>__<pickle>.csv
+options: ''                                          # specifying 'p' will enable printing of some messages to console
+
+
+#############################################
+# Kalman filter config
+############################################
+ini_vel_guess: [0.1, 0.1, 0.1]                 # initial velocity state of KF in m/s
+ini_ang_vel_guess: [0.1, 0.1, 0.1]             # initial angular velocity state of KF in rad/s
+ini_orientation: [1., 0., 0., 0.]              # initial orientation of debris - assigned, quaternion
+                                               # initial covariance matrix of KF
+ini_covariance_guess: [0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25]
+                                               # initial process noise associated with various states: [qp, qv, qom, qp1, qq]
+ini_process_noise_cov: [0.00000001, 0.00000005, 0.00000005, 0.05, 0.000005]
+                                               # initial measurement noise associated with various states: [p, om, p1, q]
+ini_meas_noise_cov: [0.005, 0.5, 1., 0.004]
+
+# KF weight values for ISPKF portion
+alpha: 0.1                                     # alpha beta kappa together determine spread of sigmapoints
+beta: 2
+kappa: 0
+epsilon: 0.0000000001                          # small positive constant for ensuring proper Cholesky
+tolerance: 0.01                                # tolerance above which iterations for the ISPKF are terminated
+
+
+
+#########################################
+# Kabsch config
+########################################
+moving_average_len: 100                        # number of iterations to average over
+settling_time: 100                             # number of iterations before which Kabsch is not activated
+
+
+##########################################
+# Bias config
+#########################################
+start_time: 20                                 # time in seconds after which data collection for bias estimation begins
+interval: 20                                   # time interval in seconds for gathering data
+threshold: 0.05                                # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
+number_of_sinusoids: 2                         # number of sinusoids to use to fit the data
+number_of_skips: 1                             # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
+
+
+##########################################
+# Heuristic config
+#########################################
+start: 100                                     # number of iterations before which heuristic is inactive
+ransac_prediction_threshold: 20                # maximal difference in degrees between ransac and predicted orientations
+pca_prediction_threshold: 20                   # maximal difference in degrees between pca and predicted orientations
+ransac_pca_threshold: [15]                     # list of maximal differences in degrees between ransac and pca orientations to sweep
+previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
+true_orientation_difference: 15                # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
+use_perfect_metric: True                       # for comparison
+short_metric_thresh: 15                        # threshold angle in degrees for short metric
+orthonormal_thresh: [0.85]                     # list of volume thresholds for using RANSAC even when there is no concord
+eig_thresh: [0.02, 0.2]                             # list of eigenvalue-metric thresholds to sweep, range is [0, 0.25]
+boresight_thresh: 5                            # if pca is really close to the boresight axis
+######################################
+# Other config
+#####################################
+error_calc_start: 50                           # time in seconds after which rmse's begin being tabluated

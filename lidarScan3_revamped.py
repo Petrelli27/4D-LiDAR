@@ -4,6 +4,8 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from trimesh.path.packing import visualize
+
 import lidarNoise_revamped as lidarNoise
 
 
@@ -52,11 +54,19 @@ def point_cloud(
     )
 
     if len(locations) == 0:
-        return np.array([]), np.array([]), np.array([]), np.array([])
+        return (
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+        )
 
     useful_rel_locations = locations - O_B
     r = useful_rel_locations - sat_pos
-    u_los = -useful_rel_locations / np.linalg.norm(useful_rel_locations, axis=1)[:, np.newaxis]
+    u_los = useful_rel_locations / np.linalg.norm(useful_rel_locations, axis=1)[:, np.newaxis]
 
     Rlb = Rot_L_to_B_prev.T @ Rot_L_to_B
     angle_B_to_B = 2.0 * np.arctan2(np.linalg.norm(Rlb - Rlb.T) / 2.0, 1.0)
@@ -75,10 +85,15 @@ def point_cloud(
         axis_B_to_B /= np.linalg.norm(axis_B_to_B)
         omega_L_to_B = (angle_B_to_B * axis_B_to_B) / dt
 
-    v_rel_B = v_rel + np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
-    v_los_s = np.dot(v_rel_B, u_los.T) + np.sum(np.cross(omega - omega_L_to_B, r) * u_los, axis=1)
+    rel_LB_component = np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
+    v_rel_B = v_rel + rel_LB_component
+
+    linear_component = np.dot(v_rel_B, u_los.T)
+    angular_component = np.sum(np.cross(omega - omega_L_to_B, r) * u_los, axis=1)
+    v_los_s = linear_component + angular_component
 
     Xs, Ys, Zs = useful_rel_locations.T
+
     if noise_cfg is None:
         noise_cfg = load_config(config_path)["noise"]
 
@@ -91,4 +106,89 @@ def point_cloud(
         config_path=config_path,
         return_dropout=False,
     )
+
+    visualize = False
+
+    if visualize:
+        import matplotlib.pyplot as plt
+
+        use_noisy_xy = False
+        point_size = 8
+        alpha = 0.8
+        cmap = "coolwarm"
+        share_color_scale = True
+
+        X_plot = Xn if use_noisy_xy else Xs
+        Y_plot = Yn if use_noisy_xy else Ys
+
+        if share_color_scale:
+            vmax = max(
+                np.max(np.abs(v_los_s)),
+                np.max(np.abs(linear_component)),
+                np.max(np.abs(angular_component)),
+            )
+            vmin = -vmax
+        else:
+            vmin = vmax = None
+
+        # --- Figure 1: total LOS velocity ---
+        fig1 = plt.figure(figsize=(7, 6))
+        ax1 = fig1.add_subplot(111)
+        sc1 = ax1.scatter(
+            X_plot,
+            Y_plot,
+            c=v_los_s,
+            s=point_size,
+            alpha=alpha,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        ax1.set_xlabel("X [m]")
+        ax1.set_ylabel("Y [m]")
+        ax1.set_title("XY point cloud colored by total LOS velocity")
+        ax1.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc1, ax=ax1, label="v_los_s [m/s]")
+
+        # --- Figure 2: linear component ---
+        fig2 = plt.figure(figsize=(7, 6))
+        ax2 = fig2.add_subplot(111)
+        sc2 = ax2.scatter(
+            X_plot,
+            Y_plot,
+            c=linear_component,
+            s=point_size,
+            alpha=alpha,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        ax2.set_xlabel("X [m]")
+        ax2.set_ylabel("Y [m]")
+        ax2.set_title("XY point cloud colored by linear component")
+        ax2.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc2, ax=ax2, label="linear component [m/s]")
+
+        # --- Figure 3: angular component ---
+        fig3 = plt.figure(figsize=(7, 6))
+        ax3 = fig3.add_subplot(111)
+        sc3 = ax3.scatter(
+            X_plot,
+            Y_plot,
+            c=angular_component,
+            s=point_size,
+            alpha=alpha,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        ax3.set_xlabel("X [m]")
+        ax3.set_ylabel("Y [m]")
+        ax3.set_title("XY point cloud colored by angular component")
+        ax3.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc3, ax=ax3, label="angular component [m/s]")
+
+        plt.tight_layout()
+        plt.show()
+
     return Xn, Yn, Zn, Vn

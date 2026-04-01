@@ -670,13 +670,94 @@ def find_center_of_mass(z_pg_k, v_k, Vs_i, PLs_i, omega_LB, omega_LD, p, thresho
     centered_points = PLs_i - p    
     omega_BL = -omega_LB                                             # (N, 3) r - p
     v_com_apparent = v_LD + np.cross(omega_BL, p)                               # (3,)
-    omega_BD_cross = np.cross(omega_BL + omega_LD, centered_points)             # (N, 3)
-    v_total = v_com_apparent + omega_BD_cross                                   # (N, 3)
+    # omega_BD_cross = np.cross(omega_BL + omega_LD, centered_points)             # (N, 3)
+    v_total = v_com_apparent                                  # (N, 3)
     v_projected = np.sum(u_los * v_total, axis=1)                               # (N,)
 
     residuals = Vs_i - v_projected                                              # (N,)
     mask = np.abs(residuals) < threshold
     near_zero_points = PLs_i[mask]
+
+    visualize = True
+    if visualize:
+        import matplotlib.pyplot as plt
+
+        Xp = PLs_i[:, 0]
+        Yp = PLs_i[:, 1]
+
+        share_color_scale = True
+        point_size = 8
+        alpha = 0.8
+        cmap = "coolwarm"
+
+        if share_color_scale:
+            vmax_vel = max(np.max(np.abs(Vs_i)), np.max(np.abs(v_projected)))
+            vmin_vel = -vmax_vel
+            vmax_res = np.max(np.abs(residuals))
+            vmin_res = -vmax_res
+        else:
+            vmin_vel = vmax_vel = None
+            vmin_res = vmax_res = None
+
+        # --- Figure 1: measured LOS velocity ---
+        fig1 = plt.figure(figsize=(7, 6))
+        ax1 = fig1.add_subplot(111)
+        sc1 = ax1.scatter(
+            Xp, Yp, c=Vs_i, s=point_size, alpha=alpha, cmap=cmap,
+            vmin=vmin_vel, vmax=vmax_vel
+        )
+        ax1.set_xlabel("X [m]")
+        ax1.set_ylabel("Y [m]")
+        ax1.set_title("XY point cloud colored by measured LOS velocity Vs_i")
+        ax1.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc1, ax=ax1, label="Vs_i [m/s]")
+
+        # --- Figure 2: projected translational LOS velocity ---
+        fig2 = plt.figure(figsize=(7, 6))
+        ax2 = fig2.add_subplot(111)
+        sc2 = ax2.scatter(
+            Xp, Yp, c=v_projected, s=point_size, alpha=alpha, cmap=cmap,
+            vmin=vmin_vel, vmax=vmax_vel
+        )
+        ax2.set_xlabel("X [m]")
+        ax2.set_ylabel("Y [m]")
+        ax2.set_title("XY point cloud colored by projected velocity")
+        ax2.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc2, ax=ax2, label="v_projected [m/s]")
+
+        # --- Figure 3: residuals ---
+        fig3 = plt.figure(figsize=(7, 6))
+        ax3 = fig3.add_subplot(111)
+        sc3 = ax3.scatter(
+            Xp, Yp, c=residuals, s=point_size, alpha=alpha, cmap="coolwarm",
+            vmin=vmin_res, vmax=vmax_res
+        )
+        ax3.set_xlabel("X [m]")
+        ax3.set_ylabel("Y [m]")
+        ax3.set_title("XY point cloud colored by residuals (Vs_i - v_projected)")
+        ax3.set_aspect("equal", adjustable="box")
+        plt.colorbar(sc3, ax=ax3, label="residual [m/s]")
+
+        # --- Figure 4: near-zero residual points ---
+        fig4 = plt.figure(figsize=(7, 6))
+        ax4 = fig4.add_subplot(111)
+        ax4.scatter(Xp, Yp, s=6, alpha=0.25, label="all points")
+        if near_zero_points.shape[0] > 0:
+            ax4.scatter(
+                near_zero_points[:, 0],
+                near_zero_points[:, 1],
+                s=12,
+                alpha=0.9,
+                label=f"|residual| < {threshold}"
+            )
+        ax4.set_xlabel("X [m]")
+        ax4.set_ylabel("Y [m]")
+        ax4.set_title("Near-zero residual points in XY")
+        ax4.set_aspect("equal", adjustable="box")
+        ax4.legend(loc="best")
+
+        plt.tight_layout()
+        plt.show()
 
     # Fallback: not enough points to fit a plane
     if np.sum(mask) < 3:
@@ -1009,6 +1090,7 @@ def run(pickle_file, configs, logger):
         else:
             # z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, v_k, VBs[i], PLs[i], omega_L_to_B, x_k[6:9], x_kp1[0:3])
             # z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, v_k, VBs[i], PLs[i], omega_L_to_B, x_k[6:9], x_kp1[0:3])
+            print(Rot_L_to_B[i] @ omega_true)
             z_p_k_1, near_zero_points = find_center_of_mass(z_pg_k_1, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
             z_p_k_2, near_zero_points = find_center_of_mass(z_pg_k_2, debris_vel[i], VBs[i], PLs[i], omega_L_to_B, omega_true, debris_pos[i])
         
@@ -1416,7 +1498,7 @@ def run(pickle_file, configs, logger):
             if not ransac_error:
                 z_q_k_2_previous = z_q_k_2.copy()
 
-        
+        visualize_flag = False
         if visualize_flag:
             # if False:
             print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
