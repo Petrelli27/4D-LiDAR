@@ -239,6 +239,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
         "partial": partials,
         "use_frame": use_frames,
         "p_drop_run": p_drop_run,
+        "mean_motion": mean_motion,
         "config": cfg,
     }
 
