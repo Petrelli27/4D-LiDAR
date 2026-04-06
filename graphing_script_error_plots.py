@@ -145,7 +145,7 @@ def plot_vdy_comparison(df: pd.DataFrame, out_dir: str):
 
 def plot_omegaz_comparison(df: pd.DataFrame, out_dir: str):
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(df["time_sec"], df["omega_kabsch_z"], label="Computed")
+    ax.plot(df["time_sec"], df["meas_w_z"], label="Computed")
     ax.plot(df["time_sec"], df["state_est_wz"], label="Estimated")
     ax.plot(df["time_sec"], df["truth_w_z"], "--", label="True")
     ax.set_xlabel("Time (s)")
@@ -242,6 +242,7 @@ def make_all_plots(
         "estimate_error",
         "meas_p_z",
         "omega_kabsch_z",
+        "meas_w_z",
         "state_est_p1_x", "state_est_p1_y", "state_est_p1_z",
         "meas_q_w", "state_est_q_w", "truth_q_w",
         "meas_q_z", "state_est_q_z", "truth_q_z",
