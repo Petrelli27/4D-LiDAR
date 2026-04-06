@@ -621,6 +621,35 @@ def recalibrate_true_orientation(q_true, q_measurement, recalibrate_frame):
         q_true_recalibrated[i] = q_new
     return q_true_recalibrated
 
+
+def recalibrate_true_orientation_singe(q_true_i, q_measurement):
+    q_recalibrate = q_true_i
+    R_recalibrate = quat2rotm(q_recalibrate)
+    R_measurement = quat2rotm(q_measurement)
+    R_rel = R_measurement.T @ R_recalibrate
+    axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
+    angles = []
+    Rs = []
+    # find the best 90 degree rotation to match q_recalibrate and q_measurement
+    for x in axes_candidates:
+        for y in axes_candidates:
+            if np.dot(x, y) == 0:
+                z = np.cross(x, y)
+                R_candidate = np.vstack([x,y,z])
+                R_net = R_rel @ R_candidate
+                theta = np.arccos(0.5*(np.trace(R_net)-1))
+                angles.append(theta)
+                Rs.append(R_candidate)
+            else:
+                continue
+    best_index = np.argmin(angles)
+    R_offset = Rs[best_index]
+    R_true_old = quat2rotm(q_true_i)
+    R_true_new = R_true_old @ R_offset
+    q_new = rotm2quat(R_true_new)
+
+    return q_new
+
 def eigenvalue_metric(evals):
     evals.sort()
     a = evals[0]
@@ -652,11 +681,12 @@ def _format_float_for_tag(value):
     return text.replace("-", "m").replace(".", "p")
 
 
-def build_combo_name(ransac_pca_threshold, orthonormal_thresh, eig_thresh):
+def build_combo_name(ransac_pca_threshold, orthonormal_thresh, eig_thresh, bias_recalibration_thresh):
     return (
         f"rpca_{_format_float_for_tag(ransac_pca_threshold)}"
         f"__ortho_{_format_float_for_tag(orthonormal_thresh)}"
         f"__eig_{_format_float_for_tag(eig_thresh)}"
+        f"__brecal_{_format_float_for_tag(bias_recalibration_thresh)}"
     )
 
 
@@ -823,6 +853,8 @@ def run(task, configs, logger):
     w_j_c = w_j_m
     tolerance = configs['tolerance']  # threshold to which the ISPKF iterates, i.e., iterate until difference between states is below threshold
 
+    # bias
+    p_ref = p_0.copy()
 
     # data gathering
     frame_records = []
@@ -975,6 +1007,7 @@ def run(task, configs, logger):
         X_i = XLs[i]
         Y_i = YLs[i]
         Z_i = ZLs[i]
+
         if current_frame_good:
 
 
@@ -1004,7 +1037,7 @@ def run(task, configs, logger):
             true_pos_inB.append(Rot_L_to_B[i] @ debris_pos[i, :])
 
             if curr_t >= (t_start + t_interval):
-                if (curr_t + t_start) % t_interval == 0 and done == 0:
+                if done == 0:
                     interval_time = curr_t - t_interval
                     z_in_b = [Rot_L_to_B[hdx] @ pos for hdx, pos in enumerate(original_pos_meas)]
                     z = np.array(z_in_b)
@@ -1023,6 +1056,9 @@ def run(task, configs, logger):
                     parameters = [params_x, params_y, params_z]
                     constants = [0, 0, constant_z]
                     done = 1
+
+                    # keep position state at this epoch
+                    p_ref = x_k[0:3]
 
             if i == 0:
                 z_q_k_1 = rotm2quat(R_1)
@@ -1172,6 +1208,15 @@ def run(task, configs, logger):
                 z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
                 z_p_k = z_p_k_z
 
+            # check if recalibration required
+            if curr_t > (t_start + t_interval):
+                u_p_ref = p_ref / np.linalg.norm(p_ref)
+                u_p = x_k[0:3] / np.linalg.norm(x_k[0:3])
+                cos_bias_ang = np.clip(u_p @ u_p_ref, -1.0, 1.0)
+                bias_ang = np.rad2deg(np.arccos(cos_bias_ang))
+                if bias_ang > configs['bias_recalibration_thresh']:
+                    done = 0
+
             omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
             B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
 
@@ -1282,6 +1327,7 @@ def run(task, configs, logger):
                 x_p_k = x_k[0:3]
                 x_p1_k = x_k[9:12]
                 x_q_k = x_k[12:16]
+                q_true[i, :] = recalibrate_true_orientation_singe(q_true[i, :], x_q_k)
                 rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
                 Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
                 bbox3_dimensions.append([Le, We, De])
@@ -1297,6 +1343,170 @@ def run(task, configs, logger):
                 z_rans.append(np.hstack([z_p_k_2, z_omega_k, associatedBbox_2[:, 0], z_q_k_2]))
             else:
                 z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
+
+            visualize_flag = False
+            # visualize_flag = True
+            if visualize_flag and i % 40 == 0 and i > 0:
+                # if False:
+                print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
+                print('Ransac True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))))
+                print('Pred True diff.:' + str(np.rad2deg(quat_angle_diff(q_kp1, q_true[i, :]))))
+                print('PCA Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_kp1))))
+                print('Ransac Pred diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_kp1))))
+                print('Ransac PCA diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, z_q_k_1))))
+                print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
+                print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
+
+                ougpug = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, True)
+
+                # print(perfect_metric)
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                # ax.legend()
+                ax.set_xlabel('x (m)')
+                ax.set_ylabel('y (m)')
+                ax.set_zlabel('z (m)')
+                ax.title.set_text(
+                    f'Time={i * dt}s' + '\n' + f'Pred. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m' + '\n' + f'Meas. Length={round(Lm, 2)}m ' + f'Width={round(Wm, 2)}m ' + f'Height={round(Dm, 2)}m')
+                # width = orange to green, blue to green
+                # length = orange to cyan, blue to cyan
+                # height = orange to magenta, blue to magenta
+                ax.scatter(X_i, Y_i, Z_i, color='black', marker='o', s=2)
+                # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], marker='o', color='r')
+
+                # print(x_kp1)
+                # drawrectangle(ax, p1_kp1, p2_kp1, p3_kp1, p4_kp1, p5_kp1, p6_kp1, p7_kp1, p8_kp1, 'orange', 1)
+                # drawrectangle(ax, associatedBbox_1[:, 0], associatedBbox_1[:, 1], associatedBbox_1[:, 2],
+                #             associatedBbox_1[:, 3],
+                #             associatedBbox_1[:, 4], associatedBbox_1[:, 5], associatedBbox_1[:, 6], associatedBbox_1[:, 7],
+                #             'b', 2, 'PCA')
+
+                drawrectangle(ax, associatedBbox_2[:, 0], associatedBbox_2[:, 1], associatedBbox_2[:, 2],
+                              associatedBbox_2[:, 3],
+                              associatedBbox_2[:, 4], associatedBbox_2[:, 5], associatedBbox_2[:, 6],
+                              associatedBbox_2[:, 7],
+                              'orange', 2, 'RANSAC')
+
+                # drawrectangle(ax, associatedBbox[:, 0], associatedBbox[:, 1], associatedBbox[:, 2], associatedBbox[:, 3],
+                #           associatedBbox[:, 4], associatedBbox[:, 5], associatedBbox[:, 6], associatedBbox[:, 7], 'orange', 2)
+
+                # drawrectangle(ax, z_pi_k[:, 0], z_pi_k[:, 1], z_pi_k[:, 2], z_pi_k[:, 3],
+                #               z_pi_k[:, 4], z_pi_k[:, 5], z_pi_k[:, 6], z_pi_k[:, 7], 'r', 1)
+                # ax.scatter(p1_kp1[0], p1_kp1[1], p1_kp1[2], color='b', s=20)
+                # drawrectangle(ax, predictedBbox[:, 0], predictedBbox[:, 1], predictedBbox[:, 2], predictedBbox[:, 3],
+                #               predictedBbox[:, 4], predictedBbox[:, 5], predictedBbox[:, 6], predictedBbox[:, 7], 'r', 1)
+
+                # ax.scatter(predictedBbox[0, 0], predictedBbox[1, 0], predictedBbox[2, 0], color='orange', label='Vertex 1 Pred.')
+                # ax.scatter(associatedBbox[0, 0], associatedBbox[1, 0], associatedBbox[2, 0], color='blue',
+                #            label='Vertex 1 Meas.')
+
+                Rot_measured = quat2rotm(z_q_k_1)
+
+                Rot_measured_2 = quat2rotm(z_q_k_2)
+                # Rot_measured_2 = R_1_2
+                # normal_vecs = normal_vecs.T
+
+                R_estimated = quat2rotm(q_kp1)
+
+                R_true = quat2rotm(q_true[i, :])
+
+                # plot measured
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
+                        color='blue', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
+                        color='blue', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
+                        color='b', linewidth=4)
+
+                # plot measured
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                        color='orange', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                        color='orange', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                        color='orange', linewidth=4)
+                #
+                # Rot_measured_2 = R_1_2
+                # plot measured
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                #         color='red', linewidth=4)
+
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 0]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 0]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 0]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 1]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 1]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 1]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k_2[0], z_p_k_2[0] + normal_vecs[0, 2]], [z_p_k_2[1], z_p_k_2[1] + normal_vecs[1, 2]],
+                #         [z_p_k_2[2], z_p_k_2[2] + normal_vecs[2, 2]],
+                #         color='blue', linewidth=4)
+                #
+
+                # plot current estimate of ekf
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 0]], [z_p_k[1], z_p_k[1] + R_estimated[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 0]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 1]], [z_p_k[1], z_p_k[1] + R_estimated[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 1]],
+                #         color='red', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_estimated[0, 2]], [z_p_k[1], z_p_k[1] + R_estimated[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + R_estimated[2, 2]],
+                #         color='red', linewidth=4, label='Predicted')
+                #
+                # plot true
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 0]],
+                        color='green', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 1]],
+                        color='green', linewidth=4)
+                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
+                        [z_p_k[2], z_p_k[2] + R_true[2, 2]],
+                        color='green', linewidth=4, label='True')
+
+                # plot b_frame
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
+                #         [0., 0. + Rot_B_to_L[i][2, 0]],
+                #         color='r', linewidth=1)
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 1]], [0., 0. + Rot_B_to_L[i][1, 1]],
+                #         [0., 0. + Rot_B_to_L[i][2, 1]],
+                #         color='g', linewidth=1)
+                # ax.plot([0., 0. + Rot_B_to_L[i][0, 2]], [0., 0. + Rot_B_to_L[i][1, 2]],
+                #         [0., 0. + Rot_B_to_L[i][2, 2]],
+                #         color='b', linewidth=1)
+
+                # black is axis of rotation
+                # ax.plot([z_p_k[0], z_p_k[0] + 1], [z_p_k[1], z_p_k[1] + 1],
+                #         [z_p_k[2], z_p_k[2] + 1],
+                #         color='black', linewidth=4)
+
+                # outlier_cloud = pcd.select_by_index(inliers, invert=True)
+
+                # Visualize the inliers (plane) and outliers
+                # inlier_cloud.paint_uniform_color([1.0, 0, 0])  # Red plane
+                # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
+                # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
+
+                # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+                ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
+                ax.scatter(debris_pos[i, 0], debris_pos[i, 1], debris_pos[i, 2], color='g', label='True Position')
+                ax.legend()
+                ax.set_aspect('equal', 'box')
+                plt.show()
+
         else:
             num_points = 0
             ransac_error = True
@@ -1403,6 +1613,7 @@ def run(task, configs, logger):
             'ransac_pca_threshold': task['ransac_pca_threshold'],
             'orthonormal_thresh': task['orthonormal_thresh'],
             'eig_thresh': task['eig_thresh'],
+            'bias_recalibration_thresh': task['bias_recalibration_thresh'],
             'frame': i,
             'frame_good': current_frame_good,
             'partial_occlusion': current_partial,
@@ -1475,6 +1686,7 @@ def run(task, configs, logger):
                 'ransac_pca_threshold': task['ransac_pca_threshold'],
                 'orthonormal_thresh': task['orthonormal_thresh'],
                 'eig_thresh': task['eig_thresh'],
+                'bias_recalibration_thresh': task['bias_recalibration_thresh'],
                 'partial_occlusion': current_partial,
             'metric_active': metric_result['metric_active'],
             'metric_choice_code': metric_result['choice_code'],
@@ -1556,6 +1768,7 @@ def run(task, configs, logger):
         'ransac_pca_threshold': task['ransac_pca_threshold'],
         'orthonormal_thresh': task['orthonormal_thresh'],
         'eig_thresh': task['eig_thresh'],
+        'bias_recalibration_thresh': task['bias_recalibration_thresh'],
         'file_name': pickle_file,
     }.items():
         assignment_summary[col] = value
@@ -1661,6 +1874,7 @@ def run(task, configs, logger):
         'ransac_pca_threshold': task['ransac_pca_threshold'],
         'orthonormal_thresh': task['orthonormal_thresh'],
         'eig_thresh': task['eig_thresh'],
+        'bias_recalibration_thresh': task['bias_recalibration_thresh'],
         'full_results_file': full_results_path,
         'assignment_results_file': assignment_path,
         'assignment_summary_file': os.path.join('assignment_results', 'summary_' + output_stem + '.csv'),

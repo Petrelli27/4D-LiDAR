@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-geometry_root_directory: 'test_pickle_files'         # top-level directory containing one subdirectory per geometry
+geometry_root_directory: 'results'         # top-level directory containing one subdirectory per geometry
 runs_per_geometry: 1                                          # number of pickle runs randomly selected within each geometry directory
 selection_seed: 42                                            # fixed seed so the same runs are reused for every hyperparameter combo
 
@@ -103,11 +103,11 @@ ini_vel_guess: [0.1, 0.1, 0.1]                 # initial velocity state of KF in
 ini_ang_vel_guess: [0.1, 0.1, 0.1]             # initial angular velocity state of KF in rad/s
 ini_orientation: [1., 0., 0., 0.]              # initial orientation of debris - assigned, quaternion
                                                # initial covariance matrix of KF
-ini_covariance_guess: [0.25, 0.5, 0.25, 0.05, 0.05, 0.05, 0.01, 0.01, 0.01, 0.25, 0.5, 0.25, 0.25, 0.5, 0.25, 0.25]
+ini_covariance_guess: [6.0e-1, 6.0e-1, 9.0e-1, 1, 1, 1, 9, 9, 9, 5, 5, 5, 5.0e-2, 5.0e-2, 5.0e-2, 5.0e-2]
                                                # initial process noise associated with various states: [qp, qv, qom, qp1, qq]
-ini_process_noise_cov: [0.00000001, 0.00000005, 0.00000005, 0.05, 0.000005]
+ini_process_noise_cov: [1.0e-6, 5.0e-7, 5.0e-7, 5.0e-2 , 5.0e-3]
                                                # initial measurement noise associated with various states: [p, om, p1, q]
-ini_meas_noise_cov: [0.005, 0.5, 1., 0.004]
+ini_meas_noise_cov: [1.0e-1, 1.0, 0.5, 0.005]
 
 # KF weight values for ISPKF portion
 alpha: 0.1                                     # alpha beta kappa together determine spread of sigmapoints
@@ -141,14 +141,16 @@ number_of_skips: 1                             # when choosing frequencies from 
 start: 100                                     # number of iterations before which heuristic is inactive
 ransac_prediction_threshold: 20                # maximal difference in degrees between ransac and predicted orientations
 pca_prediction_threshold: 20                   # maximal difference in degrees between pca and predicted orientations
-ransac_pca_threshold: [15]                     # list of maximal differences in degrees between ransac and pca orientations to sweep
+ransac_pca_threshold: [20]                     # list of maximal differences in degrees between ransac and pca orientations to sweep
 previous_threshold_multiplier: 3               # multiplier X omega X delta t given maximal difference between current and previous measurements
 true_orientation_difference: 15                # in degrees, value used to determine whether the correct choice for the algorithm was ransac, pca, predicted (for analysis purposes)
-use_perfect_metric: True                       # for comparison
+use_perfect_metric: False                       # for comparison
 short_metric_thresh: 15                        # threshold angle in degrees for short metric
-orthonormal_thresh: [0.85]                     # list of volume thresholds for using RANSAC even when there is no concord
-eig_thresh: [0.02, 0.2]                             # list of eigenvalue-metric thresholds to sweep, range is [0, 0.25]
+orthonormal_thresh: [0.5]                     # list of volume thresholds for using RANSAC even when there is no concord
+eig_thresh: [0.24]                             # list of eigenvalue-metric thresholds to sweep, range is [0, 0.25]
 boresight_thresh: 5                            # if pca is really close to the boresight axis
+bias_recalibration_thresh: [30]
+
 ######################################
 # Other config
 #####################################

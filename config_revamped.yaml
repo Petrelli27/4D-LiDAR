@@ -6,8 +6,8 @@ simulation:
 
 initial_conditions:
   position_km:
-    min: [-0.05, -0.05, -0.05]
-    max: [0.05, 0.05, 0.05]
+    min: [-0.2, -0.2, -0.2]
+    max: [0.2, 0.2, 0.2]
   velocity_km_s:
     min: [-0.001, -0.001, -0.001]
     max: [0.001, 0.001, 0.001]
@@ -22,18 +22,18 @@ initial_conditions:
     max: 35786.0
   valid_distance_m:
     min: 5.0
-    max: 500.0
+    max: 200.0
 
 mesh:
-  debris_file: object_stls/rectangle-one-panel-with-dish.stl
+  debris_file: object_stls/kompsat-1-v9.stl
 
 lidar:
   res_box_m: 7.0
   angular_resolution_deg: 0.025
   max_horizontal_fov_deg: 120.0
   max_vertical_fov_deg: 30.0
-  max_horizontal_rays: 200
-  max_vertical_rays: 200
+  max_horizontal_rays: 80
+  max_vertical_rays: 280
   sensor_origin_B_m: [0.0, 0.0, 0.0]
 
 dynamics:
@@ -49,9 +49,9 @@ dynamics:
 
 noise:
   model: global_pointing_range_dependent_dropout
-  range_sigma_m: 0.00
-  vel_sigma_m_s: 0.0
-  point_sigma_deg: 0.00
+  range_sigma_m: 0.02
+  vel_sigma_m_s: 0.03
+  point_sigma_deg: 0.002
   angular_mode: gaussian
   range_dependent:
     enabled: true
@@ -60,14 +60,14 @@ noise:
   pointing:
     omega_xyz_deg: null
   point_dropout:
-    enabled: false
-    alpha: 1.0
-    beta: 20.0
+    enabled: true
+    alpha: 10.0
+    beta: 90.0
 
 frame_dropout:
-  enabled: false
-  alpha: 2.0
-  beta: 20.0
+  enabled: true
+  alpha: 5.0
+  beta: 95.0
 
 output:
   results_dir: results

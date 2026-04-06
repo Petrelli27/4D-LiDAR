@@ -236,33 +236,39 @@ def add_state_measurement_columns(record, i, x_k, z_p_k, z_omega_k, z_p1_k, z_q_
         for idx, name in enumerate(names):
             record[f"{prefix}_{name}"] = float(values[idx]) if idx < len(values) else np.nan
 
+    def add_quat(prefix, quat):
+        if quat is None:
+            add_vec(prefix, None, ["w", "x", "y", "z"])
+        else:
+            add_vec(prefix, normalize_quat(np.asarray(quat).copy()), ["w", "x", "y", "z"])
+
     # state estimate: [p, v, omega, p1, q]
     add_vec("state_est", x_k[0:3], ["x", "y", "z"])
     add_vec("state_est", x_k[3:6], ["vx", "vy", "vz"])
     add_vec("state_est", x_k[6:9], ["wx", "wy", "wz"])
     add_vec("state_est_p1", x_k[9:12], ["x", "y", "z"])
-    q_est = normalize_quat(np.asarray(x_k[12:16]).copy())
-    add_vec("state_est_q", q_est, ["w", "x", "y", "z"])
+    add_quat("state_est_q", x_k[12:16])
 
     # main measurements
     add_vec("meas_p", z_p_k, ["x", "y", "z"])
     add_vec("meas_w", z_omega_k, ["x", "y", "z"])
     add_vec("meas_p1", z_p1_k, ["x", "y", "z"])
-    add_vec("meas_q", normalize_quat(np.asarray(z_q_k).copy()), ["w", "x", "y", "z"])
+    add_quat("meas_q", z_q_k)
 
     raw_p = without_correction[i] if i < len(without_correction) else [np.nan, np.nan, np.nan]
     add_vec("meas_p_raw", raw_p, ["x", "y", "z"])
 
     # PCA-specific measurements
     add_vec("meas_pca_p", z_p_k_1, ["x", "y", "z"])
-    add_vec("meas_pca_p1", associatedBbox_1[:, 0], ["x", "y", "z"])
-    add_vec("meas_pca_q", normalize_quat(np.asarray(z_q_k_1).copy()), ["w", "x", "y", "z"])
+    p1_pca = associatedBbox_1[:, 0] if associatedBbox_1 is not None else None
+    add_vec("meas_pca_p1", p1_pca, ["x", "y", "z"])
+    add_quat("meas_pca_q", z_q_k_1)
 
     # RANSAC-specific measurements
     add_vec("meas_ransac_p", z_p_k_2, ["x", "y", "z"])
     p1_ransac = associatedBbox_2[:, 0] if associatedBbox_2 is not None else None
     add_vec("meas_ransac_p1", p1_ransac, ["x", "y", "z"])
-    add_vec("meas_ransac_q", normalize_quat(np.asarray(z_q_k_2).copy()) if z_q_k_2 is not None else None, ["w", "x", "y", "z"])
+    add_quat("meas_ransac_q", z_q_k_2)
 
     # angular velocity diagnostics
     add_vec("omega_lls", omega_LLS, ["x", "y", "z"])
@@ -637,7 +643,35 @@ def boresight_metric(Rot_L_to_B, evecs):
 
     return np.min(angles)
 
-def run(pickle_file, configs, logger):
+def _format_float_for_tag(value):
+    value = float(value)
+    if value.is_integer():
+        return str(int(value))
+    text = f"{value:.8f}".rstrip("0").rstrip(".")
+    return text.replace("-", "m").replace(".", "p")
+
+
+def build_combo_name(ransac_pca_threshold, orthonormal_thresh, eig_thresh, bias_recalibration_thresh):
+    return (
+        f"rpca_{_format_float_for_tag(ransac_pca_threshold)}"
+        f"__ortho_{_format_float_for_tag(orthonormal_thresh)}"
+        f"__eig_{_format_float_for_tag(eig_thresh)}"
+        f"__brecal_{_format_float_for_tag(bias_recalibration_thresh)}"
+    )
+
+
+def build_output_stem(task, configs):
+    assignment_prefix = configs.get('assignment_results_file_name', 'ass_res_')
+    pickle_stem = Path(task['pickle_file']).stem
+    return f"{assignment_prefix}{task['geometry_name']}__{task['combo_name']}__run_{task['run_number_for_combo']:03d}__{pickle_stem}"
+
+
+def run(task, configs, logger):
+
+    # Initialize MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
 
     # initialize debris position, velocity and orientation
     O_B = np.array([0, 0, 0])
