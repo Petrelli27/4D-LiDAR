@@ -26,9 +26,9 @@ def compile_results_per_combo(source_folder, dest_folder):
     # Regex to parse combo from filename
     pattern = re.compile(
         r"^results_of_ass_res_results_(?P<geometry>.+?)"
-        r"__rpca_(?P<rpca>[^_]+)"
-        r"__ortho_(?P<ortho>[^_]+)"
-        r"__eig_(?P<eig>[^_]+)"
+        r"__rpca_20"
+        r"__ortho_0p5"
+        r"__eig_0p24"
         r"__run_(?P<run>\d+)"
         r"__.*\.csv$"
     )
@@ -56,6 +56,12 @@ def compile_results_per_combo(source_folder, dest_folder):
         "truth_q_y",
         "truth_q_z",
         "frame_good",
+        "meas_w_x",
+        "meas_w_y",
+        "meas_w_z",
+        "truth_w_x",
+        "truth_w_y",
+        "truth_w_z",
     ]
 
     combo_to_dfs = {}
@@ -75,9 +81,9 @@ def compile_results_per_combo(source_folder, dest_folder):
         full_path = os.path.join(source_folder, fname)
 
         combo_key = (
-            f"rpca_{match.group('rpca')}__"
-            f"ortho_{match.group('ortho')}__"
-            f"eig_{match.group('eig')}"
+            f"rpca_20__"
+            f"ortho_0p5__"
+            f"eig_0p24"
         )
 
         try:
@@ -118,6 +124,12 @@ def compile_results_per_combo(source_folder, dest_folder):
                 "truth_q_x",
                 "truth_q_y",
                 "truth_q_z",
+                "meas_w_x",
+                "meas_w_y",
+                "meas_w_z",
+                "truth_w_x",
+                "truth_w_y",
+                "truth_w_z"
             ]
 
             df = df[keep_columns].copy()
@@ -156,8 +168,8 @@ def compile_results_per_combo(source_folder, dest_folder):
 
 
 if __name__ == "__main__":
-    source_folder = r"concord_hyperparameter_results"
-    dest_folder = r"compiled_hyperparameter_combo_results"
+    source_folder = r"asr_paper_results/concord_hyperparameter_results"
+    dest_folder = r"compiled_hyperparameter_combo_results_v2"
 
     compile_results_per_combo(
         source_folder=source_folder,

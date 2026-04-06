@@ -10,6 +10,8 @@ def load_combo_file(combo_csv_path):
     required_cols = [
         "truth_p_x", "truth_p_y", "truth_p_z",
         "meas_p_x", "meas_p_y", "meas_p_z",
+        "truth_w_x", "truth_w_y", "truth_w_z",
+        "meas_w_x", "meas_w_y", "meas_w_z",
         "truth_q_w", "truth_q_x", "truth_q_y", "truth_q_z",
         "meas_q_w", "meas_q_x", "meas_q_y", "meas_q_z",
     ]
@@ -52,6 +54,11 @@ def compute_component_errors(df):
     df["err_p_y"] = pd.to_numeric(df["meas_p_y"], errors="coerce") - pd.to_numeric(df["truth_p_y"], errors="coerce")
     df["err_p_z"] = pd.to_numeric(df["meas_p_z"], errors="coerce") - pd.to_numeric(df["truth_p_z"], errors="coerce")
 
+    # Angular velocity errors
+    df["err_w_x"] = pd.to_numeric(df["meas_w_x"], errors="coerce") - pd.to_numeric(df["truth_w_x"], errors="coerce")
+    df["err_w_y"] = pd.to_numeric(df["meas_w_y"], errors="coerce") - pd.to_numeric(df["truth_w_y"], errors="coerce")
+    df["err_w_z"] = pd.to_numeric(df["meas_w_z"], errors="coerce") - pd.to_numeric(df["truth_w_z"], errors="coerce")
+
     # Quaternion sign alignment first
     df = align_measured_quaternion_sign(df)
 
@@ -86,6 +93,7 @@ def save_histogram(series, title, xlabel, output_path, bins=50):
 def summarize_error_statistics(df, output_csv_path):
     error_cols = [
         "err_p_x", "err_p_y", "err_p_z",
+        "err_w_x", "err_w_y", "err_w_z",
         "err_q_w", "err_q_x", "err_q_y", "err_q_z",
     ]
 
@@ -120,10 +128,10 @@ def summarize_error_statistics(df, output_csv_path):
 def plot_and_save_combo_error_distributions(combo_csv_path, output_folder, bins=50):
     """
     Given one compiled combo CSV:
-      - compute component-wise position and quaternion errors
+      - compute component-wise position, angular velocity, and quaternion errors
       - save one histogram PNG per component
       - save one CSV summary containing mean / variance / std dev
-      - save an augmented CSV with error columns if desired
+      - save an augmented CSV with error columns
     """
     os.makedirs(output_folder, exist_ok=True)
 
@@ -146,6 +154,9 @@ def plot_and_save_combo_error_distributions(combo_csv_path, output_folder, bins=
         ("err_p_x", "Position error distribution: $p_x$", "Error in $p_x$"),
         ("err_p_y", "Position error distribution: $p_y$", "Error in $p_y$"),
         ("err_p_z", "Position error distribution: $p_z$", "Error in $p_z$"),
+        ("err_w_x", "Angular velocity error distribution: $\\omega_x$", "Error in $\\omega_x$"),
+        ("err_w_y", "Angular velocity error distribution: $\\omega_y$", "Error in $\\omega_y$"),
+        ("err_w_z", "Angular velocity error distribution: $\\omega_z$", "Error in $\\omega_z$"),
         ("err_q_w", "Quaternion component error distribution: $q_w$", "Error in $q_w$"),
         ("err_q_x", "Quaternion component error distribution: $q_x$", "Error in $q_x$"),
         ("err_q_y", "Quaternion component error distribution: $q_y$", "Error in $q_y$"),
@@ -167,8 +178,8 @@ def plot_and_save_combo_error_distributions(combo_csv_path, output_folder, bins=
 
 
 if __name__ == "__main__":
-    combo_csv_path = r"asr_paper_results/compiled_hyperparameter_combo_results/compiled_rpca_20__ortho_0p5__eig_0p24.csv"
-    output_folder = r"output_error_distributions"
+    combo_csv_path = r"compiled_hyperparameter_combo_results_v2/compiled_rpca_20__ortho_0p5__eig_0p24.csv"
+    output_folder = r"output_error_distributions_v2"
 
     plot_and_save_combo_error_distributions(
         combo_csv_path=combo_csv_path,

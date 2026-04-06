@@ -53,7 +53,10 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
     y = y - estimated
 
     # Compute the FFT
-    y_fft = np.fft.fft(y)
+    try:
+        y_fft = np.fft.fft(y)
+    except ValueError:
+        return [], 0.0, False
     freq = np.fft.fftfreq(nframes, d=t[1] - t[0])
     y_fft = y_fft[freq > freq_threshold]
     freq = freq[freq > freq_threshold]
@@ -73,7 +76,10 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
     peak_frequencies = positive_frequencies[peaks]
 
     indices = np.arange(-1, -num_sinusoids * freq_skip - freq_skip, -freq_skip)
-    top_peak_indices = np.argsort(peak_magnitudes)[indices[::-1]][::-1]
+    try:
+        top_peak_indices = np.argsort(peak_magnitudes)[indices[::-1]][::-1]
+    except IndexError:
+        return [], 0.0, False
 
     # Extract the top three peak frequencies and their magnitudes
     top_frequencies = peak_frequencies[top_peak_indices]
@@ -620,35 +626,6 @@ def recalibrate_true_orientation(q_true, q_measurement, recalibrate_frame):
         q_new = rotm2quat(R_true_new)
         q_true_recalibrated[i] = q_new
     return q_true_recalibrated
-
-
-def recalibrate_true_orientation_singe(q_true_i, q_measurement):
-    q_recalibrate = q_true_i
-    R_recalibrate = quat2rotm(q_recalibrate)
-    R_measurement = quat2rotm(q_measurement)
-    R_rel = R_measurement.T @ R_recalibrate
-    axes_candidates = [[1,0,0],[0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]]
-    angles = []
-    Rs = []
-    # find the best 90 degree rotation to match q_recalibrate and q_measurement
-    for x in axes_candidates:
-        for y in axes_candidates:
-            if np.dot(x, y) == 0:
-                z = np.cross(x, y)
-                R_candidate = np.vstack([x,y,z])
-                R_net = R_rel @ R_candidate
-                theta = np.arccos(0.5*(np.trace(R_net)-1))
-                angles.append(theta)
-                Rs.append(R_candidate)
-            else:
-                continue
-    best_index = np.argmin(angles)
-    R_offset = Rs[best_index]
-    R_true_old = quat2rotm(q_true_i)
-    R_true_new = R_true_old @ R_offset
-    q_new = rotm2quat(R_true_new)
-
-    return q_new
 
 def eigenvalue_metric(evals):
     evals.sort()
@@ -1327,7 +1304,6 @@ def run(task, configs, logger):
                 x_p_k = x_k[0:3]
                 x_p1_k = x_k[9:12]
                 x_q_k = x_k[12:16]
-                q_true[i, :] = recalibrate_true_orientation_singe(q_true[i, :], x_q_k)
                 rotation_errors.append(np.rad2deg(quat_angle_diff(x_q_k, q_true[i, :])))
                 Le, We, De = get_dimensions(x_p1_k, x_p_k, x_q_k)
                 bbox3_dimensions.append([Le, We, De])
