@@ -193,7 +193,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
     debris_file = cfg["mesh"]["debris_file"]
     debris_mesh = trimesh.load_mesh(debris_file)
 
-    XBs, YBs, ZBs, PBs, VBs, Rot_L_to_Bs, partials = [], [], [], [], [], [], []
+    XBs, YBs, ZBs, PBs, VBs, Omega_Ls, Rot_L_to_Bs, partials = [], [], [], [], [], [], [], []
     for i in range(nframes):
         angle_i = mean_motion * dt * i
         axis = np.array([0.0, 0.0, 1.0])
@@ -219,6 +219,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
         ZBs.append(Z)
         PBs.append(P)
         VBs.append(V_los)
+        Omega_Ls.append(omega_L_i)
         Rot_L_to_Bs.append(Rot_L_to_B)
         partials.append(partial)
 
@@ -232,6 +233,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
         "debris_vel": debris_vel,
         "Rot_L_to_B": Rot_L_to_Bs,
         "omega_L": omega_L,
+        "Omega_Ls": Omega_Ls,
         "dt": dt,
         "angle_0": angle_0,
         "partial": partials,
