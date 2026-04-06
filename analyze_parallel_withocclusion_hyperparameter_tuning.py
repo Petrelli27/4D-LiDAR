@@ -565,7 +565,7 @@ def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini, mean_mot
         R_L = (
             np.cos(angle_i) * np.eye(3)
             + (1 - np.cos(angle_i)) * np.outer(axis, axis)
-            + np.sin(angle_i) * tilde(axis)
+            + np.sin(angle_i) * skew(axis)
         ) # rotation of L with respect to ECI, R_L_to_E
         # get rotation matrix for that timestep
         Rot_i_in_E = rodrigues(omega_L_init, dt*i) # R_D_to_E
@@ -746,9 +746,10 @@ def run(task, configs, logger):
     # Initializations in L Frame
     vT_0 = configs['ini_vel_guess']  # Initial guess of relative velocity of debris, can be based on how fast plan to approach during rendezvous
     omega_0 = configs['ini_ang_vel_guess']  # rad/s
-    omega_true = omega_L
+    omega_true = data['Omega_Ls']
+    omega_true = np.asarray(omega_true)
     q_ini = configs['ini_orientation']
-    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))), mean_motion)
+    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation))), mean_motion))
     # q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     q_true_ini = q_true.copy() # keep track of q_true for debug purposes
     # q_ini = q_true[0,:] # start with q_true for debug purposes only
@@ -1795,12 +1796,12 @@ def run(task, configs, logger):
     me_pz = np.mean(x_s[start_time_2:, 2] - debris_pos[start_time_2:nframes, 2])
 
     # angular velocity
-    rmse_omx = np.sqrt(np.mean((x_s[start_time_2:, 6] - omega_true[0]) ** 2))
-    rmse_omy = np.sqrt(np.mean((x_s[start_time_2:, 7] - omega_true[1]) ** 2))
-    rmse_omz = np.sqrt(np.mean((x_s[start_time_2:, 8] - omega_true[2]) ** 2))
-    me_omx = np.mean((x_s[start_time_2:, 6] - omega_true[0]))
-    me_omy = np.mean((x_s[start_time_2:, 7] - omega_true[1]))
-    me_omz = np.mean((x_s[start_time_2:, 8] - omega_true[2]))
+    rmse_omx = np.sqrt(np.mean((x_s[start_time_2:, 6] - omega_true[start_time_2:,0]) ** 2))
+    rmse_omy = np.sqrt(np.mean((x_s[start_time_2:, 7] - omega_true[start_time_2:,1]) ** 2))
+    rmse_omz = np.sqrt(np.mean((x_s[start_time_2:, 8] - omega_true[start_time_2:,2]) ** 2))
+    me_omx = np.mean((x_s[start_time_2:, 6] - omega_true[start_time_2:,0]))
+    me_omy = np.mean((x_s[start_time_2:, 7] - omega_true[start_time_2:,1]))
+    me_omz = np.mean((x_s[start_time_2:, 8] - omega_true[start_time_2:,2]))
 
     # linear velocity
     rmse_vdx = np.sqrt(np.mean((x_s[start_time_2:, 3] - debris_vel[start_time_2:nframes, 0]) ** 2))
