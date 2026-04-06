@@ -552,16 +552,24 @@ def select_oracle_method(*, i, ransac_true_diff, pca_true_diff, pred_true_diff, 
     }
 
 
-def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini):
-
+def get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, q_ini, mean_motion):
+    
     Rot_0 = quat2rotm(q_ini)
     # Rot_0 = np.eye(3)
     # print(Rot_0)
     q_s = []
+    omega_L_init = omega_true[0]
     for i in range(len(debris_pos)):
-
+        angle_i = mean_motion * dt * i
+        axis = np.array([0.0, 0.0, 1.0])
+        R_L = (
+            np.cos(angle_i) * np.eye(3)
+            + (1 - np.cos(angle_i)) * np.outer(axis, axis)
+            + np.sin(angle_i) * tilde(axis)
+        ) # rotation of L with respect to ECI, R_L_to_E
         # get rotation matrix for that timestep
-        Rot_i = rodrigues(omega_true, dt * i)
+        Rot_i_in_E = rodrigues(omega_L_init, dt*i) # R_D_to_E
+        Rot_i = R_L.T @ Rot_i_in_E # get R_D_to_L
         q_i = rotm2quat(Rot_i @ Rot_0)
         if i == 0:
             q_s.append(q_i)
@@ -650,6 +658,15 @@ def boresight_metric(Rot_L_to_B, evecs):
     
     return np.min(angles)
 
+def count_previous_bad_frames(frame_good, i):
+    count = 0
+    for j in range(i - 1, -1, -1):
+        if not frame_good[j]:
+            count += 1
+        else:
+            break
+    return count
+
 def _format_float_for_tag(value):
     value = float(value)
     if value.is_integer():
@@ -698,6 +715,7 @@ def run(task, configs, logger):
     ZBs = data['ZBs']
     PBs = data['PBs']
     VBs = data['VBs']
+    mean_motion = data['mean_motion']
 
     debris_pos = data['debris_pos']
     debris_vel = data['debris_vel']
@@ -730,7 +748,7 @@ def run(task, configs, logger):
     omega_0 = configs['ini_ang_vel_guess']  # rad/s
     omega_true = omega_L
     q_ini = configs['ini_orientation']
-    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))))
+    q_true = np.array(get_true_orientation(Rot_L_to_B, omega_true, debris_pos, dt, rotm2quat(rodrigues_axis_angle(omega_L, np.deg2rad(initial_angle_rotation)))), mean_motion)
     # q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     q_true_ini = q_true.copy() # keep track of q_true for debug purposes
     # q_ini = q_true[0,:] # start with q_true for debug purposes only
@@ -868,6 +886,7 @@ def run(task, configs, logger):
     for i in range(nframes):
         current_frame_good = bool(frame_good[i])
         current_partial = bool(partial_occlusion[i])
+        prev_bad_frame_count = count_previous_bad_frames(frame_good, i)
         Le = np.nan
         We = np.nan
         De = np.nan
@@ -1210,7 +1229,7 @@ def run(task, configs, logger):
             else:
                 cur_box_L = np.transpose(copy.deepcopy(associatedBbox_1))
                 cur_box_B = (Rot_L_to_B[i] @ cur_box_L.T).T
-                omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt)
+                omega_los_B = estimate_kabsch(prev_box_B, cur_box_B, dt * (1+prev_bad_frame_count))
                 prev_box_B = cur_box_B.copy()
 
                 omega_kabsch_b_box[i % n_moving_average] = omega_los_B
@@ -1486,7 +1505,7 @@ def run(task, configs, logger):
         else:
             num_points = 0
             ransac_error = True
-            prev_box_B = None
+            # prev_box_B = None
             adapt = False
             z_kp1 = None
             z_pi_k_1 = None
