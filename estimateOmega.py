@@ -13,7 +13,7 @@ def estimate_LLS(x, y, z, c, v_c, v, v_bl):
     """
     p = np.vstack([x,y,z]).T
     r = p-c
-    u_los = -(p)/(np.linalg.norm(p, axis=1)[:,np.newaxis])
+    u_los = (p)/(np.linalg.norm(p, axis=1)[:,np.newaxis])
     # b = v - np.dot(v_c, u_los) # this is what we want, but not how np.dot() dehaves
     b = v - u_los@(v_c + v_bl) # dot product each row of v_c and u_los
     A = np.zeros(np.shape(p))
