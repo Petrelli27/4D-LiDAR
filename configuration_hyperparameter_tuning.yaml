@@ -105,7 +105,7 @@ ini_orientation: [1., 0., 0., 0.]              # initial orientation of debris -
                                                # initial covariance matrix of KF
 ini_covariance_guess: [6.0e-1, 6.0e-1, 9.0e-1, 1, 1, 1, 9, 9, 9, 5, 5, 5, 5.0e-2, 5.0e-2, 5.0e-2, 5.0e-2]
                                                # initial process noise associated with various states: [qp, qv, qom, qp1, qq]
-ini_process_noise_cov: [1.0e-6, 5.0e-7, 5.0e-7, 5.0e-2 , 5.0e-3]
+ini_process_noise_cov: [1.0e-3, 5.0e-4, 5.0e-7, 5.0e-2 , 5.0e-3]
                                                # initial measurement noise associated with various states: [p, om, p1, q]
 ini_meas_noise_cov: [1.0e-1, 1.0, 0.5, 0.005]
 
@@ -131,14 +131,14 @@ settling_time: 100                             # number of iterations before whi
 start_time: 20                                 # time in seconds after which data collection for bias estimation begins
 interval: 20                                   # time interval in seconds for gathering data
 threshold: 0.05                                # initial threshold to remove frequencies obtained from crosstalk with baseband frequency
-number_of_sinusoids: 2                         # number of sinusoids to use to fit the data
+number_of_sinusoids: 8                         # number of sinusoids to use to fit the data
 number_of_skips: 1                             # when choosing frequencies from frequency according to decreasing magnitude, skips this many frequencies
 
 
 ##########################################
 # Heuristic config
 #########################################
-start: 100                                     # number of iterations before which heuristic is inactive
+start: 10                                     # number of iterations before which heuristic is inactive
 ransac_prediction_threshold: 20                # maximal difference in degrees between ransac and predicted orientations
 pca_prediction_threshold: 20                   # maximal difference in degrees between pca and predicted orientations
 ransac_pca_threshold: [20]                     # list of maximal differences in degrees between ransac and pca orientations to sweep

@@ -111,6 +111,11 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         success = False
     # print(constant)
 
+    fig = plt.figure()
+    plt.plot(t, y)
+    plt.plot(t, sum_of_sinusoids(t, *params))
+    plt.show()
+
     return params, constant, success
 
 
@@ -851,6 +856,9 @@ def run(task, configs, logger):
 
     # bias
     p_ref = p_0.copy()
+    t_ref = 0
+    bias_removal_success = False
+    X_i_ref, Y_i_ref, Z_i_ref = [], [], []
 
     # data gathering
     frame_records = []
@@ -996,7 +1004,6 @@ def run(task, configs, logger):
         curr_t = i * dt
         t_start = configs['start_time']  # when the first bias calculation should be initiated
         t_interval = configs['interval']  # how many seconds of data should be collected each time
-        bias_removal_success = False
         PLs.append((Rot_L_to_B[i].T @ (PBs[i]).T).T)
         XLs.append(PLs[i][:, 0])
         YLs.append(PLs[i][:, 1])
@@ -1006,7 +1013,6 @@ def run(task, configs, logger):
         Z_i = ZLs[i]
 
         if current_frame_good:
-
 
             num_points = len(Z_i)
 
@@ -1049,13 +1055,16 @@ def run(task, configs, logger):
                     thresh = configs['threshold']
                     num_sin = configs['number_of_sinusoids']
                     skip = configs['number_of_skips']
-                    params_z, constant_z, bias_removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
+                    params_z, constant_z, removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
                     parameters = [params_x, params_y, params_z]
                     constants = [0, 0, constant_z]
                     done = 1
+                    bias_removal_success = removal_success
 
                     # keep position state at this epoch
                     p_ref = x_k[0:3]
+                    t_ref = curr_t
+                    X_i_ref, Y_i_ref, Z_i_ref = X_i, Y_i, Z_i
 
             if i == 0:
                 z_q_k_1 = rotm2quat(R_1)
@@ -1144,6 +1153,7 @@ def run(task, configs, logger):
                 boresight_thresh=configs['boresight_thresh'],
             )
             use_measurement = metric_result['choice_code']
+            print(use_measurement)
             short_metric_choice = metric_result['short_metric_choice']
             short_metric_choices.append(short_metric_choice)
 
@@ -1201,7 +1211,9 @@ def run(task, configs, logger):
             without_correction.append(z_p_k)
             bbox1_dimensions.append([Lm, Wm, Dm])
             bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
+            print(bias_removal_success)
             if curr_t >= (t_start + t_interval) and bias_removal_success:
+                print(constants)
                 z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
                 z_p_k = z_p_k_z
 
@@ -1211,8 +1223,29 @@ def run(task, configs, logger):
                 u_p = x_k[0:3] / np.linalg.norm(x_k[0:3])
                 cos_bias_ang = np.clip(u_p @ u_p_ref, -1.0, 1.0)
                 bias_ang = np.rad2deg(np.arccos(cos_bias_ang))
-                if bias_ang > configs['bias_recalibration_thresh']:
+                print(bias_ang)
+                if bias_ang > configs['bias_recalibration_thresh'] and curr_t - t_ref > t_interval:
                     done = 0
+                    bias_removal_success = False
+                    fig = plt.figure()
+                    # ax = fig.add_subplot(111, projection='3d')
+                    # ax.legend()
+                    # ax.set_xlabel('x (m)')
+                    # ax.set_ylabel('y (m)')
+                    # ax.set_zlabel('z (m)')
+                    # ax.plot(debris_pos[:, 0], debris_pos[:, 1], debris_pos[:, 2])
+                    # ax.scatter(p_ref[0], p_ref[1], p_ref[2], color='green')
+                    # ax.scatter(x_k[0], x_k[1], x_k[2], color='blue')
+                    # ax.scatter(X_i, Y_i, Z_i, color='blue', marker='o', s=2)
+                    # ax.scatter(X_i_ref, Y_i_ref, Z_i_ref, color='green', marker='o', s=2)
+
+                    fig=plt.figure()
+                    plt.plot(debris_pos[:, 0], debris_pos[:, 1])
+                    plt.scatter(p_ref[0], p_ref[1], color='green')
+                    plt.scatter(x_k[0], x_k[1], color='blue')
+                    plt.scatter(X_i, Y_i,color='blue', marker='o', s=2)
+                    plt.scatter(X_i_ref, Y_i_ref, color='green', marker='o', s=2)
+                    plt.show()
 
             omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
             B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
@@ -1340,9 +1373,9 @@ def run(task, configs, logger):
             else:
                 z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
 
-            visualize_flag = False
-            # visualize_flag = True
-            if visualize_flag and i % 40 == 0 and i > 0:
+            # visualize_flag = False
+            visualize_flag = True
+            if visualize_flag and i % 800 == 0 and i > 800:
                 # if False:
                 print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
                 print('Ransac True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2, q_true[i, :]))))
@@ -1353,7 +1386,7 @@ def run(task, configs, logger):
                 print('PCA Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1_previous, z_q_k_1))))
                 print('Ransac Prev. diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_2_previous, z_q_k_2))))
 
-                ougpug = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, True)
+                # ougpug = boundingbox.boundingbox3D_RANSAC(X_i, Y_i, Z_i, q_kp1, True, True)
 
                 # print(perfect_metric)
                 fig = plt.figure()
@@ -1407,26 +1440,26 @@ def run(task, configs, logger):
                 R_true = quat2rotm(q_true[i, :])
 
                 # plot measured
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
-                        color='blue', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
-                        color='blue', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
-                        color='b', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 0]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 1]],
+                #         color='blue', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured[2, 2]],
+                #         color='b', linewidth=4)
 
                 # plot measured
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
-                        color='orange', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
-                        color='orange', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
-                        [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
-                        color='orange', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 0]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 0]],
+                #         color='orange', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 1]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 1]],
+                #         color='orange', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + Rot_measured_2[0, 2]], [z_p_k[1], z_p_k[1] + Rot_measured_2[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + Rot_measured_2[2, 2]],
+                #         color='orange', linewidth=4)
                 #
                 # Rot_measured_2 = R_1_2
                 # plot measured
@@ -1463,15 +1496,15 @@ def run(task, configs, logger):
                 #         color='red', linewidth=4, label='Predicted')
                 #
                 # plot true
-                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
-                        [z_p_k[2], z_p_k[2] + R_true[2, 0]],
-                        color='green', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
-                        [z_p_k[2], z_p_k[2] + R_true[2, 1]],
-                        color='green', linewidth=4)
-                ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
-                        [z_p_k[2], z_p_k[2] + R_true[2, 2]],
-                        color='green', linewidth=4, label='True')
+                # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 0]], [z_p_k[1], z_p_k[1] + R_true[1, 0]],
+                #         [z_p_k[2], z_p_k[2] + R_true[2, 0]],
+                #         color='green', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 1]], [z_p_k[1], z_p_k[1] + R_true[1, 1]],
+                #         [z_p_k[2], z_p_k[2] + R_true[2, 1]],
+                #         color='green', linewidth=4)
+                # ax.plot([z_p_k[0], z_p_k[0] + R_true[0, 2]], [z_p_k[1], z_p_k[1] + R_true[1, 2]],
+                #         [z_p_k[2], z_p_k[2] + R_true[2, 2]],
+                #         color='green', linewidth=4, label='True')
 
                 # plot b_frame
                 # ax.plot([0., 0. + Rot_B_to_L[i][0, 0]], [0., 0. + Rot_B_to_L[i][1, 0]],
@@ -1496,7 +1529,8 @@ def run(task, configs, logger):
                 # outlier_cloud.paint_uniform_color([0.0, 1, 0])  # Green remaining points
                 # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
-                # ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+                ax.scatter(x_k[0], x_k[1], x_k[2], color='orange' )
+                ax.scatter(z_p_k[0], z_p_k[1], z_p_k[2], color='r', label='After Bias')
                 ax.scatter(z_p_k_1[0], z_p_k_1[1], z_p_k_1[2], color='b', label='Box Centroid')
                 ax.scatter(debris_pos[i, 0], debris_pos[i, 1], debris_pos[i, 2], color='g', label='True Position')
                 ax.legend()
