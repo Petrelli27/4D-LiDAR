@@ -2,3 +2,5 @@
 *.pyc
 *.pickle
 *.csv
+/figs
+/object_stls

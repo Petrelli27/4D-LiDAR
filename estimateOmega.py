@@ -48,8 +48,8 @@ def estimate_rotation_B(Rot_L_to_B, i, dt):
     if i == 0:
         omega_L_to_B = np.array([0,0,0])
     else:
-        Rlb = Rot_L_to_B[i-1].T @ Rot_L_to_B[i]  # shorthand
-        angle_B_to_B = np.arccos((np.trace(Rlb) - 1)/2)
+        Rlb = Rot_L_to_B[i-1] @ Rot_L_to_B[i].T
+        angle_B_to_B = 2.0 * np.arctan2(np.linalg.norm(Rlb - Rlb.T) / 2.0, 1.0)
         axis_B_to_B = 1./(2*np.sin(angle_B_to_B))*np.array([Rlb[2,1]-Rlb[1,2],Rlb[0,2]-Rlb[2,0],Rlb[1,0]-Rlb[0,1]])
         axis_B_to_B = np.transpose(Rot_L_to_B[i]) @ axis_B_to_B / np.linalg.norm(axis_B_to_B)
         omega_L_to_B = (angle_B_to_B * axis_B_to_B)/dt

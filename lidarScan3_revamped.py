@@ -24,8 +24,8 @@ def point_cloud(
     vertical_resolution,
     h_range,
     v_range,
-    sat_mesh: trimesh.Trimesh,
-    sat_pos,
+    debris_mesh: trimesh.Trimesh,
+    debris_pos,
     v_rel,
     omega,
     Rot_L_to_B,
@@ -47,7 +47,7 @@ def point_cloud(
         axis=-1,
     ).reshape(-1, 3)
 
-    locations, index_ray, index_tri = sat_mesh.ray.intersects_location(
+    locations, index_ray, index_tri = debris_mesh.ray.intersects_location(
         ray_origins=np.tile(O_B, (len(rays), 1)),
         ray_directions=rays,
         multiple_hits=False,
@@ -65,10 +65,10 @@ def point_cloud(
         )
 
     useful_rel_locations = locations - O_B
-    r = useful_rel_locations - sat_pos
+    r = useful_rel_locations - debris_pos
     u_los = useful_rel_locations / np.linalg.norm(useful_rel_locations, axis=1)[:, np.newaxis]
 
-    Rlb = Rot_L_to_B_prev.T @ Rot_L_to_B
+    Rlb = Rot_L_to_B_prev @ Rot_L_to_B.T
     angle_B_to_B = 2.0 * np.arctan2(np.linalg.norm(Rlb - Rlb.T) / 2.0, 1.0)
 
     if angle_B_to_B < 1e-3:
@@ -85,8 +85,8 @@ def point_cloud(
         axis_B_to_B /= np.linalg.norm(axis_B_to_B)
         omega_L_to_B = (angle_B_to_B * axis_B_to_B) / dt
 
-    rel_LB_component = np.cross(-omega_L_to_B, Rot_L_to_B @ sat_pos)
-    v_rel_B = v_rel + rel_LB_component
+    rel_LB_component = np.cross(-omega_L_to_B, debris_pos)
+    v_rel_B = v_rel + rel_LB_component # this introduces the coriolis term
 
     linear_component = np.dot(v_rel_B, u_los.T)
     angular_component = np.sum(np.cross(omega - omega_L_to_B, r) * u_los, axis=1)

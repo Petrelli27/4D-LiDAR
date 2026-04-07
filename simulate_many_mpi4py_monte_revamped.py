@@ -98,7 +98,7 @@ def process_frame(rank, i, mesh_template, debris_pos, debris_vel, angle_0, omega
         fov_v,
         debris,
         debris_pos_B,
-        debris_vel_B,
+        debris_vel_B, # this doesn't have the coriolis term, but that's okay
         omega_B,
         Rot_L_to_B,
         Rot_L_to_B_prev,
@@ -202,7 +202,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
             + (1 - np.cos(angle_i)) * np.outer(axis, axis)
             + np.sin(angle_i) * tilde(axis)
         )
-        omega_L_i = R_L @ omega_L
+        omega_L_i = R_L @ omega_L # Omega_LD angular velocity of D with respect to L, not E, expressed in L frame
         X, Y, Z, P, V_los, Rot_L_to_B, partial = process_frame(
             rank,
             i,
