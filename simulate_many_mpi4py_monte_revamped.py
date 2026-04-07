@@ -98,7 +98,7 @@ def process_frame(rank, i, mesh_template, debris_pos, debris_vel, angle_0, omega
         fov_v,
         debris,
         debris_pos_B,
-        debris_vel_B, # this doesn't have the coriolis term, but that's okay
+        debris_vel_B,
         omega_B,
         Rot_L_to_B,
         Rot_L_to_B_prev,
@@ -117,6 +117,76 @@ def sample_vector(min_vals, max_vals):
     return np.random.uniform(min_vals, max_vals)
 
 
+def get_trajectory_mode(cfg):
+    return cfg.get("trajectory", {}).get("mode", "dynamics")
+
+
+def generate_circular_relative_trajectory(cfg, nframes, dt):
+    """
+    Generate debris position relative to a chaser fixed at the origin,
+    corresponding to a chaser moving on a circle around the debris.
+
+    In circular_relative mode, r0 and rdot0 are ignored for translation.
+
+    Expected config example:
+    trajectory:
+      mode: circular_relative
+      circular_relative:
+        radius_km: 0.05
+        plane: xy        # xy, xz, yz
+        angular_rate_rad_s: 0.01
+        phase0_rad: 0.0
+    """
+    circ_cfg = cfg["trajectory"]["circular_relative"]
+
+    radius = float(circ_cfg["radius_km"])
+    plane = str(circ_cfg.get("plane", "xy")).lower()
+    omega_circ = float(circ_cfg["angular_rate_rad_s"])
+    phase0 = float(circ_cfg.get("phase0_rad", 0.0))
+
+    t = np.arange(nframes, dtype=float) * dt
+    theta = phase0 + omega_circ * t
+
+    if plane == "xy":
+        x = -radius * np.cos(theta)
+        y = -radius * np.sin(theta)
+        z = np.zeros_like(theta)
+
+        vx = radius * omega_circ * np.sin(theta)
+        vy = -radius * omega_circ * np.cos(theta)
+        vz = np.zeros_like(theta)
+
+    elif plane == "xz":
+        x = -radius * np.cos(theta)
+        y = np.zeros_like(theta)
+        z = -radius * np.sin(theta)
+
+        vx = radius * omega_circ * np.sin(theta)
+        vy = np.zeros_like(theta)
+        vz = -radius * omega_circ * np.cos(theta)
+
+    elif plane == "yz":
+        x = np.zeros_like(theta)
+        y = -radius * np.cos(theta)
+        z = -radius * np.sin(theta)
+
+        vx = np.zeros_like(theta)
+        vy = radius * omega_circ * np.sin(theta)
+        vz = -radius * omega_circ * np.cos(theta)
+
+    else:
+        raise ValueError(f"Unsupported circular plane: {plane}. Use 'xy', 'xz', or 'yz'.")
+
+    x *= 1000
+    y *= 1000
+    z *= 1000
+    vx *= 1000
+    vy *= 1000
+    vz *= 1000
+
+    return x, y, z, vx, vy, vz
+
+
 def get_initial_conditions(cfg, conditions_count=100, config_path: Optional[str] = None):
     starts_dict = []
     sim_cfg = cfg["simulation"]
@@ -128,6 +198,7 @@ def get_initial_conditions(cfg, conditions_count=100, config_path: Optional[str]
     mu = float(dyn_cfg["mu_km3_s2"])
     valid_distance_min = float(ic_cfg["valid_distance_m"]["min"])
     valid_distance_max = float(ic_cfg["valid_distance_m"]["max"])
+    trajectory_mode = get_trajectory_mode(cfg)
 
     while len(starts_dict) < conditions_count:
         r0 = sample_vector(ic_cfg["position_km"]["min"], ic_cfg["position_km"]["max"])
@@ -139,7 +210,15 @@ def get_initial_conditions(cfg, conditions_count=100, config_path: Optional[str]
         earth_radius_km = 6378.0
         r = altitude + earth_radius_km
         mean_motion = np.sqrt(mu / r ** 3)
-        _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion, config_path=config_path)
+
+        if trajectory_mode == "dynamics":
+            _, _, _, _, _, _, d, _ = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion, config_path=config_path)
+        elif trajectory_mode == "circular_relative":
+            x, y, z, _, _, _ = generate_circular_relative_trajectory(cfg, nframes, dt)
+            d = np.sqrt(x**2 + y**2 + z**2)
+        else:
+            raise ValueError(f"Unknown trajectory mode: {trajectory_mode}")
+
         if max(d) > valid_distance_max or min(d) < valid_distance_min:
             continue
 
@@ -158,6 +237,7 @@ def get_initial_conditions(cfg, conditions_count=100, config_path: Optional[str]
                 "mean_motion": float(mean_motion),
                 "nframes": nframes,
                 "use_frames": bool(cfg["frame_dropout"]["enabled"]),
+                "trajectory_mode": trajectory_mode,
             }
         )
     return starts_dict
@@ -182,11 +262,22 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
     angle_0 = float(sim_parameters["angle_0"])
     mean_motion = float(sim_parameters["mean_motion"])
     nframes = int(sim_parameters["nframes"])
+    trajectory_mode = sim_parameters.get("trajectory_mode", get_trajectory_mode(cfg))
 
     use_frames, p_drop_run = build_frame_usage(nframes, cfg["frame_dropout"])
     dt = float(cfg["simulation"]["dt"])
 
-    x, y, z, vx, vy, vz, d, v = dynamics.propagate(dt, nframes, r0, rdot0, mean_motion, config_path=config_path)
+    if trajectory_mode == "dynamics":
+        x, y, z, vx, vy, vz, d, v = dynamics.propagate(
+            dt, nframes, r0, rdot0, mean_motion, config_path=config_path
+        )
+    elif trajectory_mode == "circular_relative":
+        x, y, z, vx, vy, vz = generate_circular_relative_trajectory(cfg, nframes, dt)
+        d = np.sqrt(x**2 + y**2 + z**2)
+        v = np.sqrt(vx**2 + vy**2 + vz**2)
+    else:
+        raise ValueError(f"Unknown trajectory mode: {trajectory_mode}")
+
     debris_pos = np.vstack([x, y, z]).T
     debris_vel = np.vstack([vx, vy, vz]).T
 
@@ -202,7 +293,8 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
             + (1 - np.cos(angle_i)) * np.outer(axis, axis)
             + np.sin(angle_i) * tilde(axis)
         )
-        omega_L_i = R_L @ omega_L # Omega_LD angular velocity of D with respect to L, not E, expressed in L frame
+        omega_L_i = R_L @ omega_L
+
         X, Y, Z, P, V_los, Rot_L_to_B, partial = process_frame(
             rank,
             i,
@@ -240,6 +332,7 @@ def run_single_simulation(rank, sim_parameters, sim_index, cfg, config_path: Opt
         "use_frame": use_frames,
         "p_drop_run": p_drop_run,
         "mean_motion": mean_motion,
+        "trajectory_mode": trajectory_mode,
         "config": cfg,
     }
 
