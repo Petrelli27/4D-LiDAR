@@ -111,10 +111,10 @@ def remove_bias(start_t, dt, y, estimated, num_sinusoids, freq_threshold, freq_s
         success = False
     # print(constant)
 
-    fig = plt.figure()
-    plt.plot(t, y)
-    plt.plot(t, sum_of_sinusoids(t, *params))
-    plt.show()
+    # fig = plt.figure()
+    # plt.plot(t, y)
+    # plt.plot(t, sum_of_sinusoids(t, *params))
+    # plt.show()
 
     return params, constant, success
 
@@ -859,6 +859,7 @@ def run(task, configs, logger):
     t_ref = 0
     bias_removal_success = False
     X_i_ref, Y_i_ref, Z_i_ref = [], [], []
+    cumalative_z_bias = 0.0
 
     # data gathering
     frame_records = []
@@ -1057,7 +1058,8 @@ def run(task, configs, logger):
                     skip = configs['number_of_skips']
                     params_z, constant_z, removal_success = remove_bias(interval_time, dt, z[:, 2], estimated[:, 2], num_sin, thresh, skip, true[:, 2], params_z)
                     parameters = [params_x, params_y, params_z]
-                    constants = [0, 0, constant_z]
+                    cumalative_z_bias += constant_z
+                    constants = [0, 0, cumalative_z_bias]
                     done = 1
                     bias_removal_success = removal_success
 
@@ -1153,7 +1155,6 @@ def run(task, configs, logger):
                 boresight_thresh=configs['boresight_thresh'],
             )
             use_measurement = metric_result['choice_code']
-            # print(use_measurement)
             short_metric_choice = metric_result['short_metric_choice']
             short_metric_choices.append(short_metric_choice)
 
@@ -1211,9 +1212,7 @@ def run(task, configs, logger):
             without_correction.append(z_p_k)
             bbox1_dimensions.append([Lm, Wm, Dm])
             bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
-            # print(bias_removal_success)
             if curr_t >= (t_start + t_interval) and bias_removal_success:
-                # print(constants)
                 z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
                 z_p_k = z_p_k_z
 
