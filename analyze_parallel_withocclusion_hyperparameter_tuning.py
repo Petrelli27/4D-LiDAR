@@ -861,6 +861,7 @@ def run(task, configs, logger):
     X_i_ref, Y_i_ref, Z_i_ref = [], [], []
     cumalative_z_bias = 0.0
 
+
     # data gathering
     frame_records = []
     short_metric_choices = []
@@ -894,6 +895,7 @@ def run(task, configs, logger):
     q_ini = rotate_to_within_45_q_true(q_true[0,:], q_ini)
     prev_box_B = None
     for i in range(nframes):
+        bias_correction_triggered = False
         current_frame_good = bool(frame_good[i])
         current_partial = bool(partial_occlusion[i])
         prev_bad_frame_count = count_previous_bad_frames(frame_good, i)
@@ -1062,6 +1064,7 @@ def run(task, configs, logger):
                     constants = [0, 0, cumalative_z_bias]
                     done = 1
                     bias_removal_success = removal_success
+                    bias_correction_triggered = True
 
                     # keep position state at this epoch
                     p_ref = x_k[0:3]
@@ -1692,6 +1695,8 @@ def run(task, configs, logger):
             'metric_overridden_by_oracle': metric_overridden_by_oracle,
             'final_choice_code': final_choice_code,
             'final_choice_name': final_choice_name,
+            'bias_correction': bias_correction_triggered,
+            'bias_current': cumalative_z_bias
         }
 
         record = add_state_measurement_columns(
