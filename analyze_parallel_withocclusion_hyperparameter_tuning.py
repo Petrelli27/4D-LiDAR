@@ -1153,7 +1153,7 @@ def run(task, configs, logger):
                 boresight_thresh=configs['boresight_thresh'],
             )
             use_measurement = metric_result['choice_code']
-            print(use_measurement)
+            # print(use_measurement)
             short_metric_choice = metric_result['short_metric_choice']
             short_metric_choices.append(short_metric_choice)
 
@@ -1211,9 +1211,9 @@ def run(task, configs, logger):
             without_correction.append(z_p_k)
             bbox1_dimensions.append([Lm, Wm, Dm])
             bbox2_dimensions.append([Lm_2, Wm_2, Dm_2])
-            print(bias_removal_success)
+            # print(bias_removal_success)
             if curr_t >= (t_start + t_interval) and bias_removal_success:
-                print(constants)
+                # print(constants)
                 z_p_k_z = correct_bias(z_p_k, i, dt, parameters, constants, Rot_L_to_B[i], Rot_B_to_L[i])
                 z_p_k = z_p_k_z
 
@@ -1223,11 +1223,11 @@ def run(task, configs, logger):
                 u_p = x_k[0:3] / np.linalg.norm(x_k[0:3])
                 cos_bias_ang = np.clip(u_p @ u_p_ref, -1.0, 1.0)
                 bias_ang = np.rad2deg(np.arccos(cos_bias_ang))
-                print(bias_ang)
+                # print(bias_ang)
                 if bias_ang > configs['bias_recalibration_thresh'] and curr_t - t_ref > t_interval:
                     done = 0
                     bias_removal_success = False
-                    fig = plt.figure()
+                    # fig = plt.figure()
                     # ax = fig.add_subplot(111, projection='3d')
                     # ax.legend()
                     # ax.set_xlabel('x (m)')
@@ -1239,13 +1239,13 @@ def run(task, configs, logger):
                     # ax.scatter(X_i, Y_i, Z_i, color='blue', marker='o', s=2)
                     # ax.scatter(X_i_ref, Y_i_ref, Z_i_ref, color='green', marker='o', s=2)
 
-                    fig=plt.figure()
-                    plt.plot(debris_pos[:, 0], debris_pos[:, 1])
-                    plt.scatter(p_ref[0], p_ref[1], color='green')
-                    plt.scatter(x_k[0], x_k[1], color='blue')
-                    plt.scatter(X_i, Y_i,color='blue', marker='o', s=2)
-                    plt.scatter(X_i_ref, Y_i_ref, color='green', marker='o', s=2)
-                    plt.show()
+                    # fig=plt.figure()
+                    # plt.plot(debris_pos[:, 0], debris_pos[:, 1])
+                    # plt.scatter(p_ref[0], p_ref[1], color='green')
+                    # plt.scatter(x_k[0], x_k[1], color='blue')
+                    # plt.scatter(X_i, Y_i,color='blue', marker='o', s=2)
+                    # plt.scatter(X_i_ref, Y_i_ref, color='green', marker='o', s=2)
+                    # plt.show()
 
             omega_L_to_B = estimate_rotation_B(Rot_L_to_B, i, dt)
             B_v_BL = np.cross(-Rot_L_to_B[i] @ omega_L_to_B, Rot_L_to_B[i] @ z_p_k)
@@ -1373,8 +1373,8 @@ def run(task, configs, logger):
             else:
                 z_rans.append(np.hstack([np.zeros_like(z_p_k_1), np.zeros_like(z_omega_k), np.zeros_like(associatedBbox_1[:, 0]), np.zeros_like(z_q_k_1)]))
 
-            # visualize_flag = False
-            visualize_flag = True
+            visualize_flag = False
+            # visualize_flag = True
             if visualize_flag and i % 800 == 0 and i > 800:
                 # if False:
                 print('PCA True diff.:' + str(np.rad2deg(quat_angle_diff(z_q_k_1, q_true[i, :]))))
