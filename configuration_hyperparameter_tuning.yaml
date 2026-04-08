@@ -2,7 +2,7 @@
 # monte_carlo.py config
 ##############################################
 
-geometry_root_directory: 'results'         # top-level directory containing one subdirectory per geometry
+geometry_root_directory: 'results_kompsat'         # top-level directory containing one subdirectory per geometry
 runs_per_geometry: 1                                          # number of pickle runs randomly selected within each geometry directory
 selection_seed: 42                                            # fixed seed so the same runs are reused for every hyperparameter combo
 
@@ -90,7 +90,7 @@ master_file_columns: [
     # --- range ---
     "true_range",
 ]
-top_level_dir: 'C:\Users\seanw\Desktop\4D-LiDAR-parallel_cluster-2'                       # the folder where csv will be saved and where code is
+top_level_dir: 'here'                       # the folder where csv will be saved and where code is
 results_file_name: 'mc_res_combo.csv'    # name of file containing all results
 assignment_results_file_name: 'ass_res_'             # assignment output filenames will become ass_res_<geometry>__<combo>__run_<n>__<pickle>.csv
 options: ''                                          # specifying 'p' will enable printing of some messages to console
@@ -105,7 +105,12 @@ ini_orientation: [1., 0., 0., 0.]              # initial orientation of debris -
                                                # initial covariance matrix of KF
 ini_covariance_guess: [6.0e-1, 6.0e-1, 9.0e-1, 1, 1, 1, 9, 9, 9, 5, 5, 5, 5.0e-2, 5.0e-2, 5.0e-2, 5.0e-2]
                                                # initial process noise associated with various states: [qp, qv, qom, qp1, qq]
-ini_process_noise_cov: [1.0e-3, 5.0e-4, 5.0e-7, 5.0e-2 , 5.0e-3]
+#ini_process_noise_cov: [1.0e-14, 5.0e-12, 5.0e-8, 5.0e-5 , 5.0e-8]
+#ini_process_noise_cov: [1.0e-5, 5.0e-5, 5.0e-1, 5.0e-5 , 5.0e-2]
+#ini_process_noise_cov: [1.0e-14, 5.0e-5, 5.0e-5, 5.0e-5 , 5.0e-2]
+#ini_process_noise_cov: [1.0e-14, 5.0e-10, 5.0e-7, 5.0e-5 , 5.0e-5]
+#ini_process_noise_cov: [1.0e-14, 5.0e-10, 5.0e-6, 5.0e-8 , 5.0e-5]
+ini_process_noise_cov: [1.0e-14, 5.0e-9, 5.0e-7, 5.0e-11 , 5.0e-5]
                                                # initial measurement noise associated with various states: [p, om, p1, q]
 ini_meas_noise_cov: [1.0e-1, 1.0, 0.5, 0.005]
 

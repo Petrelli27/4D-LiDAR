@@ -199,6 +199,7 @@ def get_initial_conditions(cfg, conditions_count=100, config_path: Optional[str]
     valid_distance_min = float(ic_cfg["valid_distance_m"]["min"])
     valid_distance_max = float(ic_cfg["valid_distance_m"]["max"])
     trajectory_mode = get_trajectory_mode(cfg)
+    print(trajectory_mode)
 
     while len(starts_dict) < conditions_count:
         r0 = sample_vector(ic_cfg["position_km"]["min"], ic_cfg["position_km"]["max"])
