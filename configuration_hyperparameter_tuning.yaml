@@ -152,7 +152,7 @@ true_orientation_difference: 15                # in degrees, value used to deter
 use_perfect_metric: False                       # for comparison
 short_metric_thresh: 15                        # threshold angle in degrees for short metric
 orthonormal_thresh: [0.5]                     # list of volume thresholds for using RANSAC even when there is no concord
-eig_thresh: [0.24]                             # list of eigenvalue-metric thresholds to sweep, range is [0, 0.25]
+eig_thresh: [1]                             # list of eigenvalue-metric thresholds to sweep, range is [0, 0.25]
 boresight_thresh: 5                            # if pca is really close to the boresight axis
 bias_recalibration_thresh: [30]
 

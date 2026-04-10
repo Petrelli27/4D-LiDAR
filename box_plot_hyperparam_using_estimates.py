@@ -95,8 +95,7 @@ def build_quartile_combo_orientation_plot(
             "orthonormal_thresh",
             "eig_thresh",
             "metric_stage_name",
-            "ransac_error",
-            "pca_error",
+            "estimate_error",
         ]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
@@ -131,14 +130,9 @@ def build_quartile_combo_orientation_plot(
             print(f"Skipping {fname} because it has 0 kept rows")
             continue
 
-        df_kept["ransac_error"] = pd.to_numeric(df_kept["ransac_error"], errors="coerce")
-        df_kept["pca_error"] = pd.to_numeric(df_kept["pca_error"], errors="coerce")
+        df_kept["estimate_error"] = pd.to_numeric(df_kept["estimate_error"], errors="coerce")
 
-        df_kept["selected_orientation_error"] = np.where(
-            df_kept["metric_stage_name"].isin(["agree_ransac", "ortho_ransac"]),
-            df_kept["ransac_error"],
-            df_kept["pca_error"]
-        )
+        df_kept["selected_orientation_error"] = df_kept["estimate_error"]
 
         df_kept = df_kept.dropna(subset=["selected_orientation_error"]).copy()
         if df_kept.empty:

@@ -14,21 +14,20 @@ def frame_good_mask(series):
 def compile_results_per_combo(source_folder, dest_folder):
     """
     Read all per-run results CSVs in source_folder, keep only frame_good rows,
-    retain a selected subset of columns, and write one compiled CSV per combo
-    into dest_folder.
+    retain a selected subset of columns, and write one compiled CSV per
+    (rpca, ortho) combo into dest_folder.
 
-    Filenames are expected to look like:
-    results_of_ass_res_results_booster_200s__rpca_5__ortho_0p4__eig_0p04__run_001__sim_debris_trimesh_test_booster_103.csv
+    Expected filename format:
+    results_of_ass_res_results_<geometry>__rpca_<rpca>__ortho_<ortho>__eig_<eig>__run_<run>__*.csv
     """
 
     os.makedirs(dest_folder, exist_ok=True)
 
-    # Regex to parse combo from filename
     pattern = re.compile(
         r"^results_of_ass_res_results_(?P<geometry>.+?)"
-        r"__rpca_20"
-        r"__ortho_0p5"
-        r"__eig_0p24"
+        r"__rpca_(?P<rpca>.+?)"
+        r"__ortho_(?P<ortho>.+?)"
+        r"__eig_(?P<eig>.+?)"
         r"__run_(?P<run>\d+)"
         r"__.*\.csv$"
     )
@@ -39,6 +38,7 @@ def compile_results_per_combo(source_folder, dest_folder):
         "orthonormal_thresh",
         "eig_thresh",
         "metric_stage_name",
+        "estimate_error",
         "ransac_error",
         "pca_error",
         "truth_p_x",
@@ -64,6 +64,37 @@ def compile_results_per_combo(source_folder, dest_folder):
         "truth_w_z",
     ]
 
+    keep_columns = [
+        "geometry_name",
+        "ransac_pca_threshold",
+        "orthonormal_thresh",
+        "eig_thresh",
+        "metric_stage_name",
+        "estimate_error",
+        "ransac_error",
+        "pca_error",
+        "truth_p_x",
+        "truth_p_y",
+        "truth_p_z",
+        "meas_p_x",
+        "meas_p_y",
+        "meas_p_z",
+        "meas_q_w",
+        "meas_q_x",
+        "meas_q_y",
+        "meas_q_z",
+        "truth_q_w",
+        "truth_q_x",
+        "truth_q_y",
+        "truth_q_z",
+        "meas_w_x",
+        "meas_w_y",
+        "meas_w_z",
+        "truth_w_x",
+        "truth_w_y",
+        "truth_w_z",
+    ]
+
     combo_to_dfs = {}
     processed_files = 0
     skipped_files = 0
@@ -80,11 +111,10 @@ def compile_results_per_combo(source_folder, dest_folder):
 
         full_path = os.path.join(source_folder, fname)
 
-        combo_key = (
-            f"rpca_20__"
-            f"ortho_0p5__"
-            f"eig_0p24"
-        )
+        rpca = match.group("rpca")
+        ortho = match.group("ortho")
+
+        combo_key = f"rpca_{rpca}__ortho_{ortho}"
 
         try:
             df = pd.read_csv(full_path)
@@ -98,49 +128,20 @@ def compile_results_per_combo(source_folder, dest_folder):
             df = df.loc[frame_good_mask(df["frame_good"])].copy()
 
             if df.empty:
-                print(f"Processed {fname} | kept 0 frame_good rows")
+                print(f"Processed {fname} | combo={combo_key} | kept 0 frame_good rows")
                 processed_files += 1
                 continue
 
-            keep_columns = [
-                "geometry_name",
-                "ransac_pca_threshold",
-                "orthonormal_thresh",
-                "eig_thresh",
-                "metric_stage_name",
-                "ransac_error",
-                "pca_error",
-                "truth_p_x",
-                "truth_p_y",
-                "truth_p_z",
-                "meas_p_x",
-                "meas_p_y",
-                "meas_p_z",
-                "meas_q_w",
-                "meas_q_x",
-                "meas_q_y",
-                "meas_q_z",
-                "truth_q_w",
-                "truth_q_x",
-                "truth_q_y",
-                "truth_q_z",
-                "meas_w_x",
-                "meas_w_y",
-                "meas_w_z",
-                "truth_w_x",
-                "truth_w_y",
-                "truth_w_z"
-            ]
-
             df = df[keep_columns].copy()
             df["source_file"] = fname
+            df["combo_key"] = combo_key
 
             if combo_key not in combo_to_dfs:
                 combo_to_dfs[combo_key] = []
 
             combo_to_dfs[combo_key].append(df)
 
-            print(f"Processed {fname} | kept {len(df)} frame_good rows")
+            print(f"Processed {fname} | combo={combo_key} | kept {len(df)} frame_good rows")
             processed_files += 1
 
         except Exception as e:
@@ -168,8 +169,8 @@ def compile_results_per_combo(source_folder, dest_folder):
 
 
 if __name__ == "__main__":
-    source_folder = r"asr_paper_results/concord_hyperparameter_results"
-    dest_folder = r"compiled_hyperparameter_combo_results_v2"
+    source_folder = r"D:\phd\4d-lidar\to_sync\final_res_brecal_30_hp"
+    dest_folder = r"compiled_hyperparameter_combo_results_final"
 
     compile_results_per_combo(
         source_folder=source_folder,
