@@ -1152,7 +1152,7 @@ def run(task, configs, logger):
                 ransac_vecs_volume=ransac_vecs_volume,
                 pca_ratio=pca_ratios[-1] if len(pca_ratios) > 0 else 0.0,
                 pca_angle=pca_angles[-1] if len(pca_angles) > 0 else 0.0,
-                short_metric_thresh=configs['short_metric_thresh'],
+                short_metric_thresh=configs['ransac_pca_threshold'],
                 orthonormal_thresh=configs['orthonormal_thresh'],
                 eig_thresh=configs['eig_thresh'],
                 boresight_thresh=configs['boresight_thresh'],
