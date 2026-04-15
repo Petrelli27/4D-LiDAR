@@ -222,8 +222,8 @@ def compile_run_histories(input_folder, output_csv, pattern="*.csv", n_skip_vali
 
 
 if __name__ == "__main__":
-    input_folder = r"C:\Users\seanw\Desktop\4D-LiDAR-parallel_cluster-2\pre_final_res\full_results"
-    output_csv = r"compiled_rmse_summary_5.csv"
+    input_folder = r"D:\phd\4d-lidar\to_sync\to_sync\to_sync\final_res_final_res\full_results"
+    output_csv = r"compiled_rmse_summary_final.csv"
 
     compile_run_histories(
         input_folder=input_folder,

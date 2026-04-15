@@ -62,7 +62,7 @@ def compute_geometry_means(input_csv, output_csv):
 
 
 if __name__ == "__main__":
-    input_csv = r"compiled_rmse_summary.csv"
-    output_csv = r"geometry_mean_rmse.csv"
+    input_csv = r"compiled_rmse_summary_final.csv"
+    output_csv = r"geometry_mean_rmse_final.csv"
 
     compute_geometry_means(input_csv, output_csv)

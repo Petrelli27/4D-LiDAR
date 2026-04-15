@@ -81,8 +81,7 @@ def plot_position_error(
     txt = (
         rf"$p_x$  RMSE={_rmse(ex_rmse):.4f}m" "\n"
         rf"$p_y$  RMSE={_rmse(ey_rmse):.4f}m" "\n"
-        rf"$p_z$  RMSE={_rmse(ez_rmse):.4f}m" "\n"
-        rf"(from sample {i0})"
+        rf"$p_z$  RMSE={_rmse(ez_rmse):.4f}m"
     )
     ax.text(0.62, 0.23, txt, transform=ax.transAxes, fontsize=11)
 
@@ -115,8 +114,8 @@ def plot_linear_velocity_error(
     txt = (
         rf"$v_{{Dx}}$  RMSE={_rmse(evx_rmse):.4f}m/s" "\n"
         rf"$v_{{Dy}}$  RMSE={_rmse(evy_rmse):.4f}m/s" "\n"
-        rf"$v_{{Dz}}$  RMSE={_rmse(evz_rmse):.4f}m/s" "\n"
-        rf"(from sample {i0})"
+        rf"$v_{{Dz}}$  RMSE={_rmse(evz_rmse):.4f}m/s"
+        # rf"(from sample {i0})"
     )
     ax.text(0.66, 0.24, txt, transform=ax.transAxes, fontsize=11)
 
@@ -149,8 +148,8 @@ def plot_angular_velocity_error(
     txt = (
         rf"$\Omega_x$  RMSE={_rmse(ewx_rmse):.4f} rad/s" "\n"
         rf"$\Omega_y$  RMSE={_rmse(ewy_rmse):.4f} rad/s" "\n"
-        rf"$\Omega_z$  RMSE={_rmse(ewz_rmse):.4f} rad/s" "\n"
-        rf"(from sample {i0})"
+        rf"$\Omega_z$  RMSE={_rmse(ewz_rmse):.4f} rad/s"
+        # rf"(from sample {i0})"
     )
     ax.text(0.62, 0.23, txt, transform=ax.transAxes, fontsize=11)
 
@@ -175,7 +174,7 @@ def plot_orientation_error(
     ax.text(
         0.63,
         0.86,
-        f"RMSE={_rmse(e_rmse):.2f} deg\n(from sample {i0})",
+        f"RMSE={_rmse(e_rmse):.2f} deg",
         transform=ax.transAxes,
         fontsize=11,
     )
@@ -220,14 +219,14 @@ def plot_vdy_comparison(df: pd.DataFrame, out_dir: str, show: bool = False):
 
 def plot_omegaz_comparison(df: pd.DataFrame, out_dir: str, show: bool = False):
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(df["time_sec"], df["meas_w_z"], label="Computed")
-    ax.plot(df["time_sec"], df["state_est_wz"], label="Estimated")
-    ax.plot(df["time_sec"], df["truth_w_z"], "--", label="True")
+    ax.plot(df["time_sec"], df["meas_w_x"], label="Computed")
+    ax.plot(df["time_sec"], df["state_est_wx"], label="Estimated")
+    ax.plot(df["time_sec"], df["truth_w_x"], "--", label="True")
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel(r"$\Omega_z$ (rad/s)")
+    ax.set_ylabel(r"$\Omega_x$ (rad/s)")
     ax.legend(loc="upper right")
 
-    _save_fig(fig, os.path.join(out_dir, "omegaz_comparison.svg"), show=show)
+    _save_fig(fig, os.path.join(out_dir, "omegay_comparison.svg"), show=show)
 
 
 def plot_vertex_p1_components(df: pd.DataFrame, out_dir: str, show: bool = False):
@@ -357,7 +356,8 @@ def make_all_plots(
 
 
 if __name__ == "__main__":
-    csv_path = r"full_results/results_of_ass_res_kompsat__rpca_20__ortho_0p5__eig_0p24__brecal_30__run_001__sim_debris_trimesh_test_kompsat_0.csv"
+    file = "results_of_ass_res_results_cube-circular-panels__rpca_15__ortho_0p6__eig_1__brecal_90__run_039__sim_debris_trimesh_test_cube-circular-panels_132.csv"
+    csv_path = "D:\\phd\\4d-lidar\\to_sync\\to_sync\\to_sync\\final_res_final_res\\full_results\\" + file
     out_dir = r"figs"
 
     make_all_plots(
