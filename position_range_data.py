@@ -39,6 +39,7 @@ def make_compiled_csv_and_plot(
     3) Compute PCA and RANSAC position errors
     4) Save compiled CSV
     5) Bin by true_range and plot mean position error per bin
+       with +/- 1 sigma whiskers
     """
 
     target_substring = "results_of_sim_debris_trimesh"
@@ -85,6 +86,7 @@ def make_compiled_csv_and_plot(
                         "meas_pca_p_x", "meas_pca_p_y", "meas_pca_p_z",
                         "meas_ransac_p_x", "meas_ransac_p_y", "meas_ransac_p_z",
                     ]
+
                     for col in numeric_cols:
                         df_good[col] = pd.to_numeric(df_good[col], errors="coerce")
 
@@ -156,7 +158,9 @@ def make_compiled_csv_and_plot(
 
     grouped = compiled_all.groupby("range_bin", observed=False).agg(
         mean_ransac_position_error=("ransac_position_error", "mean"),
+        std_ransac_position_error=("ransac_position_error", "std"),
         mean_pca_position_error=("pca_position_error", "mean"),
+        std_pca_position_error=("pca_position_error", "std"),
         count=("true_range", "size")
     ).reset_index()
 
@@ -165,6 +169,11 @@ def make_compiled_csv_and_plot(
     if grouped.empty:
         print("No non-empty bins available for plotting.")
         return
+
+    # If a bin only has one sample, pandas std is NaN.
+    # For plotting, set those whiskers to zero.
+    grouped["std_ransac_position_error"] = grouped["std_ransac_position_error"].fillna(0.0)
+    grouped["std_pca_position_error"] = grouped["std_pca_position_error"].fillna(0.0)
 
     labels = [
         f"{int(interval.left)}–{int(interval.right)}"
@@ -184,6 +193,9 @@ def make_compiled_csv_and_plot(
     ax.bar(
         x - width / 2,
         grouped["mean_ransac_position_error"],
+        yerr=grouped["std_ransac_position_error"],
+        capsize=4,
+        error_kw={"elinewidth": 1.2, "capthick": 1.2},
         width=width,
         label="RANSAC position error",
         edgecolor=ransac_edge,
@@ -194,6 +206,9 @@ def make_compiled_csv_and_plot(
     ax.bar(
         x + width / 2,
         grouped["mean_pca_position_error"],
+        yerr=grouped["std_pca_position_error"],
+        capsize=4,
+        error_kw={"elinewidth": 1.2, "capthick": 1.2},
         width=width,
         label="PCA position error",
         edgecolor=pca_edge,
@@ -202,8 +217,8 @@ def make_compiled_csv_and_plot(
     )
 
     ax.set_xlabel("True range bin (m)")
-    ax.set_ylabel("Mean position error")
-    ax.set_title(f"Mean position error by {bin_size} m true-range bin")
+    ax.set_ylabel("Position error")
+    ax.set_title(f"Mean position error ± 1σ by {bin_size} m true-range bin")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.legend()
@@ -211,11 +226,15 @@ def make_compiled_csv_and_plot(
 
     plt.tight_layout()
 
+    if output_figure is not None:
+        plt.savefig(output_figure, dpi=300, bbox_inches="tight")
+        print(f"Saved figure to: {output_figure}")
+
     plt.show()
 
 
 if __name__ == "__main__":
-    root_folder = r"range_pca_ransac_data"
+    root_folder = r"asr_paper_results/range_pca_ransac_data"
     output_csv = r"compiled_position_errors.csv"
     output_figure = None
 
