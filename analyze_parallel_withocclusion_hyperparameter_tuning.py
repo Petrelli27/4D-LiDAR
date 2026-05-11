@@ -23,6 +23,21 @@ import random
 random.seed(42)
 np.random.seed(42)
 
+
+def lookup_R(x_kp1, R_table, do_R1=True):
+
+    range = np.linalg.norm(x_kp1[:3])
+    range_index = 0 # function of range
+    p = R_table['position'][range_index]
+    om = R_table['angular_velocity'][range_index]
+    p1 = R_table['vertex_1'][range_index]
+    q = R_table['orientation'][range_index]
+
+    if do_R1:
+        return np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
+    
+    return np.diag([p, p, p, om, om, om, p1, p1, p1])
+
 def get_dimensions(p1, p, q):
     p1_to_p = p - p1
     R = quat2rotm(q)
@@ -781,6 +796,7 @@ def run(task, configs, logger):
     q = configs['ini_meas_noise_cov'][3]
     R1 = np.diag([p, p, p, om, om, om, p1, p1, p1, q, q, q, q])
     R2 = np.diag([p, p, p, om, om, om, p1, p1, p1])
+    R_table = configs['measurement_values_range_dependant']
 
     z_q_k_1_previous = np.zeros((4,))
     z_q_k_2_previous = np.zeros((4,))
@@ -1285,12 +1301,13 @@ def run(task, configs, logger):
             if adapt:
                 z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
                 H = H2
-                R = R2
+                # R = R2
+                R = lookup_R(x_kp1, do_R2=True)
             else:
                 z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
                 H = H1
-                R = R1
-
+                # R = R1
+                R = lookup_R(x_kp1, do_R1=True)
             if i == 0:
                 x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])
                 P_k = P_0.copy()
