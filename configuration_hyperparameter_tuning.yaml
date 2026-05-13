@@ -113,11 +113,11 @@ ini_covariance_guess: [6.0e-1, 6.0e-1, 9.0e-1, 1, 1, 1, 9, 9, 9, 5, 5, 5, 5.0e-2
 ini_process_noise_cov: [1.0e-14, 5.0e-9, 5.0e-7, 5.0e-8 , 5.0e-5]
                                                # initial measurement noise associated with various states: [p, om, p1, q]
 ini_meas_noise_cov: [1.0e-1, 1.0, 0.5, 0.005]
+lookup: True
 measurement_values_range_dependant:
-    position: []
-    angular_velocity: []
-    vertex_1: []
-    orientation: []
+    position: [-0.000321495, 0.226847]  # ax + b values
+    angular_velocity: [0.000662085, 0.0436243]
+    orientation: [0.000793386, 0.100261]
 
 # KF weight values for ISPKF portion
 alpha: 0.1                                     # alpha beta kappa together determine spread of sigmapoints
