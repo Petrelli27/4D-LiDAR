@@ -1300,16 +1300,27 @@ def run(task, configs, logger):
             else:
                 z_omega_k = omega_LLS + omega_L_to_B + omega_los_L
 
-            if adapt:
-                z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
-                H = H2
-                # R = R2
-                R = lookup_R(x_kp1, R2, R_table, do_R1=False, lookup=configs['lookup'])
+
+            if i == 0:
+                if adapt:
+                    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
+                    H = H2
+                    R = R2
+                else:
+                    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+                    H = H1
+                    R = R1
             else:
-                z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
-                H = H1
-                # R = R1
-                R = lookup_R(x_kp1, R1, R_table, do_R1=True, lookup=configs['lookup'])
+                if adapt:
+                    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k])
+                    H = H2
+                    # R = R2
+                    R = lookup_R(x_kp1, R2, R_table, do_R1=False, lookup=configs['lookup'])
+                else:
+                    z_kp1 = np.hstack([z_p_k, z_omega_k, z_p1_k, z_q_k])
+                    H = H1
+                    # R = R1
+                    R = lookup_R(x_kp1, R1, R_table, do_R1=True, lookup=configs['lookup'])
             if i == 0:
                 x_k = np.hstack([z_p_k, vT_0, z_omega_k, z_p1_k, z_q_k_1])
                 P_k = P_0.copy()
